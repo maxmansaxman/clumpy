@@ -3,6 +3,7 @@
 import csv
 import re
 import numpy as np
+import matplotlib.pyplot as plt
 
 class CI:
   "A class for all the attributes of a single clumped isotope measurement"
@@ -32,6 +33,10 @@ class ACQUISITION:
       self.d18Oref = 0
       self.date=''
       self.time=''
+      self.D47_raw=0
+      self.d47=0
+      self.D48=0
+      self.d48=0
 
 def d13Ccalculator (samGas,refGas,refd13C):
   '''calculates d13C in VPDB'''
@@ -41,14 +46,12 @@ def d13Ccalculator (samGas,refGas,refd13C):
   #For now, let's just take isodat's calculations
   vpdb=0.011237
 
-
-filePath='/Users/Max/Dropbox/CarbonateClumping/PressureBaselineCorrection/CIDS_04April_2014_justMax.csv'
-
 def CIDS_parser(filePath):
   samples=[]
   CIDS=[]
   acqIndex=0
   sampleIndex=0
+  cycle=0
 
    # Initializing so that the first acquisitions are placed in the first sample
    # For now, naming the string by its number
@@ -157,6 +160,81 @@ def CIDS_subtractBackground(samples):
       samples[i].acqs[j].voltRef = samples[i].acqs[j].voltRef-background
 
 
+def D47_calculations(samples):
+  '''Performs all the clumped isotope calculations on the raw voltages and bulk d13C and d18O values'''
+
+  vpdb_13C=0.0112372 # values copied from CIDS spreadsheet
+  vsmow_18O=0.0020052
+  vsmow_17O=0.0003799
+  lambda_17=0.5164
+
+  for i in range(len(samples)):
+    for j in range(len(samples[i].acqs)):
+      k=samples[i].acqs[j]
+      R13_sa=(k.d13Csample/1000+1)*vpdb_13C
+      R18_sa=(k.d18Osample/1000+1)*vsmow_18O
+      R17_sa=np.power((R18_sa/vsmow_18O),lambda_17)*vsmow_17O
+
+      R13_ref=(k.d13Cref/1000+1)*vpdb_13C
+      R18_ref=(k.d18Oref/1000+1)*vsmow_18O
+      R17_ref=np.power((R18_ref/vsmow_18O),lambda_17)*vsmow_17O
+
+      # calculating stochastic ratios
+      # to keep things organized and avoid repetetive code lines,
+      # organizing calculations in arrays where item 1 is sample gas, item 2 is ref gas
+      R13=np.array([R13_sa, R13_ref])
+      R17=np.array([R17_sa, R17_ref])
+      R18=np.array([R18_sa, R18_ref])
+
+
+      R45_stoch=R13+2*R17
+      R46_stoch=2*R13*R17+R17*R17+2*R18
+      R47_stoch=2*R13*R18+2*R17*R18+R13*R17*R17
+      R48_stoch=2*R17*R18*R13+R18*R18
+      R49_stoch=R13*R18*R18
+
+      R_stoch=np.array([R45_stoch, R46_stoch, R47_stoch, R48_stoch, R49_stoch]).T
+
+      # calculating measured voltage ratios, with sample/ref bracketing
+      R_measured_sample=(k.voltSam[:,1:6]/(np.tile(k.voltSam[:,0],(5,1)).T))
+      R_measured_ref=(k.voltRef[:,1:6]/(np.tile(k.voltRef[:,0],(5,1)).T))
+
+      delta_measured=np.zeros(np.shape(R_measured_sample)) # Preallocating for size of delta array
+
+      for l in range(len(R_measured_sample)):
+        delta_measured[l,:]=(R_measured_sample[l,:]/((R_measured_ref[l,:]+R_measured_ref[l+1,:])/2)-1)*1000
+        # couches ratios in sample/std bracketing, put in delta notation
+
+      delta_measured_mean=np.zeros((3,delta_measured.shape[1]))
+
+      delta_measured_mean[0,:]=np.mean(delta_measured, axis=0) # averaging for all cycles
+      delta_measured_mean[1,:]=np.std(delta_measured, axis=0)  # standard deviation among all cycles
+      delta_measured_mean[2,:]=delta_measured_mean[1,:]/np.sqrt(len(delta_measured)) # std error among all cycles
+
+      R_calculated_sample = (delta_measured_mean[0,:]/1000 + 1)*R_stoch[1,:]
+      D_raw=(R_calculated_sample/R_stoch[0,:] - 1)*1000
+
+      k.D47=D_raw[2]-D_raw[0]-D_raw[1]
+      k.D48=D_raw[3]-D_raw[0]-D_raw[1]
+      k.d47=delta_measured_mean[0,2]
+      k.d48=delta_measured_mean[0,3]
+
+
+
+  return samples
+
+
+
+
+
+
+
+
+###############################################################
+# Here's where the actual I/O happens
+
+
+# TODO: get a filePath from user
 filePath='/Users/Max/Dropbox/CarbonateClumping/PressureBaselineCorrection/CIDS_04April_2014_justMax.csv'
 print 'The file we\'re processing is: \n' + filePath
 
