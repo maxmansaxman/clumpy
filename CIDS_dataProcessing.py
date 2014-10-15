@@ -1,4 +1,4 @@
-'''Program to process raw isdat intensities, and turn them into meaningful isotope ratios'''
+'''Program to process raw isodat intensities for clumped CO2 measurements, and turn them into meaningful isotope ratios'''
 
 import csv
 import re
@@ -37,6 +37,14 @@ class ACQUISITION:
       self.d47=0
       self.D48=0
       self.d48=0
+      self.D47_excel=0
+      self.D48_excel=0
+      self.d45_excel=0
+      self.d46_excel=0
+      self.d47_excel=0
+      self.d48_excel=0
+      self.d46=0
+      self.d45=0
 
 def d13Ccalculator (samGas,refGas,refd13C):
   '''calculates d13C in VPDB'''
@@ -93,23 +101,35 @@ def CIDS_parser(filePath):
 
       if 'Date:' in line:
         samples[-1].date= line[line.index('Date:')+1]
+        samples[-1].acqs[-1].D47_excel=float(line[line.index('D47=')+1])
 
       elif 'Time:' in line:
         samples[-1].acqs[-1].time=line[line.index('Time:')+1]
+        samples[-1].acqs[-1].D48_excel=float(line[line.index('D48=')+1])
+
+      elif 'Analyst' in line:
+        samples[-1].acqs[-1].d45_excel=float(line[line.index('d45')+1])
 
       elif 'Type' in line:
         samples[-1].type=line[line.index('Type')+1].lower()
 
-      elif 'Sample d13C (VPDB)' in line:
+      elif 'Sample d13C (VPDB)' in line[0:10]:
         samples[-1].acqs[-1].d13Csample=float(line[line.index('Sample d13C (VPDB)')+1])
+        samples[-1].acqs[-1].d46_excel=float(line[line.index('d46')+1])
 
-      elif 'Sample d18O (SMOW)' in line:
+      elif 'Sample d18O (SMOW)' in line[0:10]:
         samples[-1].acqs[-1].d18Osample=float(line[line.index('Sample d18O (SMOW)')+1])
+        samples[-1].acqs[-1].d47_excel=float(line[line.index('d47')+1])
 
-      elif 'Ref Gas d13C (VPDB)' in line:
+      elif 'Ref Gas d13C (VPDB)' in line[0:10]:
         samples[-1].acqs[-1].d13Cref=float(line[line.index('Ref Gas d13C (VPDB)')+1])
+        try:
+          samples[-1].acqs[-1].d48_excel=float(line[line.index('d48')+1])
+        except:
+          print 'couldn\'t find d48 in acquistions %d' % acqIndex
+          print line
 
-      elif 'Ref Gas d18O (VSMOW)' in line:
+      elif 'Ref Gas d18O (VSMOW)' in line[0:10]:
         samples[-1].acqs[-1].d18Oref=float(line[line.index('Ref Gas d18O (VSMOW)')+1])
 
       else:
@@ -168,6 +188,10 @@ def D47_calculations(samples):
   vsmow_17O=0.0003799
   lambda_17=0.5164
 
+  # TODO: remove this enrichment stuff
+  enrichments=np.zeros((len(samples)*9,6))
+  counter=0
+
   for i in range(len(samples)):
     for j in range(len(samples[i].acqs)):
       k=samples[i].acqs[j]
@@ -219,9 +243,18 @@ def D47_calculations(samples):
       k.d47=delta_measured_mean[0,2]
       k.d48=delta_measured_mean[0,3]
 
+      k.d45=delta_measured_mean[0,0]
+      k.d46=delta_measured_mean[0,1]
+
+      excels=np.array([k.d45_excel, k.d46_excel, k.d47_excel, k.d48_excel, k.D47_excel, k.D48_excel])
+      deltas=np.array([k.d45, k.d46, k.d47, k.d48, k.D47, k.D48])
+      enrichments[counter,:]=(deltas-excels)
+
+      counter += 1
 
 
-  return samples
+
+  return samples, enrichments
 
 
 
@@ -241,6 +274,7 @@ print 'The file we\'re processing is: \n' + filePath
 samples=CIDS_parser(filePath)
 
 samples =CIDS_cleaner(samples)
+(samples,enrichments)=D47_calculations(samples)
 
 bckChoice=raw_input('Would you like to correct the voltages for background? (y/n) ')
 pblChoice = raw_input('Would you like to do a pressure baseline correction? (y/n) ')
