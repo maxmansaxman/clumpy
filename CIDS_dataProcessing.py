@@ -268,7 +268,7 @@ def D47_calculations(samples):
 
 
 # TODO: get a filePath from user
-filePath='/Users/Max/Dropbox/CarbonateClumping/PressureBaselineCorrection/CIDS_04April_2014_justMax.csv'
+filePath='/Users/Max/Box Sync/Dropbox/CarbonateClumping/PressureBaselineCorrection/CIDS_04April_2014_justMax.csv'
 print 'The file we\'re processing is: \n' + filePath
 
 samples=CIDS_parser(filePath)
