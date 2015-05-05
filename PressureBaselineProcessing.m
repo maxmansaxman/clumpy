@@ -5,7 +5,7 @@
 close all
 clear all
 
-cd ~/Dropbox/CarbonateClumping/PressureBaselineCorrection/Max_April_2014
+cd('~/Box Sync/Dropbox/CarbonateClumping/PressureBaselineCorrection/Max_April_2014')
 
 files=dir('*.csv'); %taking only the csv data we want  
 len=size(files,1);
