@@ -14,6 +14,7 @@ try:
 finally:
     f.close()
 
+
 #1. Getting raw voltage data
 #Searching for the start of the raw voltages
 start=buff.find('CIntensityData')
@@ -22,6 +23,8 @@ voltRef=[]
 voltSam=[]
 
 #Slightly elegant method: pulling out based on spacing after 'CIntensityData' ascii key
+# TODO: make this more flexible
+# TODO: Catch errors if wrong voltage sequence found
 
 
 startPreVolt=start+2304+168 #observed location of 'pre' cycle on ref gas side
@@ -34,7 +37,7 @@ for i in range(7):
     startSamVolt=start+1344+i*160 #observed location of sample gas voltage cycles
     voltSam.append(struct.unpack('6d',buff[startSamVolt:(startSamVolt+6*8)]))
 
-#2. Getting d13C and d18O data
+#2. Getting d13C and d18O data for each cycle
 
 startEval=buff.find('CDualInletEvaluatedDataCollect') #rough guess of starting position
 d13C=[]
@@ -70,6 +73,8 @@ if not found18Ostart:
     print('Failed to find the appropriate byte sequence for d18O')
 
 
+# Now, actually pulling bulk isotope data based on start13C and start18O variables
+
 for i in range(7):
     # start13C=newstartEval-1461+16*i #observed location of ref gas voltage cycles
     d13C.append(struct.unpack('d',buff[start13C-8+16*i:(start13C+16*i)])[0])
@@ -77,13 +82,7 @@ for i in range(7):
     # start18O=newstartEval-1188+16*i
     d18O.append(struct.unpack('d',buff[start18O-8+16*i:(start18O+16*i)])[0])
 
+# Averaging d13C and d18O for each cycle
 
-
-
-
-export=open(fileName + '.csv','wb')
-wrt=csv.writer(export,dialect='excel')
-wrt.writerow([fileName])
-for item in keys:
-    wrt.writerow([item])
-export.close()
+d13C_final = sum(d13C)/len(d13C)
+d18O_final = sum(d18O)/len(d18O)
