@@ -3,12 +3,9 @@ import csv
 import struct
 import numpy as np
 
-fileName = 'Acquisition-0029.did'
 
 
-#reading in binary file
 f=open(fileName,'rb')
-
 try:
     buff = f.read()
 finally:
@@ -86,3 +83,10 @@ for i in range(7):
 
 d13C_final = sum(d13C)/len(d13C)
 d18O_final = sum(d18O)/len(d18O)
+
+# Pulling out other auxiliary info
+# Ref gas isotope composition
+startRefGas=buff.find('CEvalDataSecStdTransferPart')
+
+d13C_ref=struct.unpack('d',buff[startRefGas+203:startRefGas+203+8])
+d18O_ref=struct.unpack('d',buff[startRefGas+423:startRefGas+423+8])

@@ -105,6 +105,7 @@ def Isodat_File_Parser(fileName):
         buff = f.read()
     finally:
         f.close()
+
     #1. Getting raw voltage data
     #Searching for the start of the raw voltages
     start=buff.find('CIntensityData')
@@ -167,7 +168,35 @@ def Isodat_File_Parser(fileName):
     d13C_final = sum(d13C)/len(d13C)
     d18O_final = sum(d18O)/len(d18O)
 
-    return voltRef, voltSam, d13C_final, d18O_final
+    #3. Pulling out other auxiliary info
+    # 3.1 Ref gas isotope composition
+    startRefGas=buff.find('CEvalDataSecStdTransferPart')
+
+    d13C_ref=struct.unpack('d',buff[startRefGas+203:startRefGas+203+8])[0]
+    d18O_ref=struct.unpack('d',buff[startRefGas+423:startRefGas+423+8])[0]
+
+    # 3.2 whether or not method is a CO2_multiply or a *_start
+    firstAcq = False
+    lastAcq = False
+    startMethod = buff.find('CDualInletBlockData')
+    methodBlock = buff[startMethod-120:startMethod-20].decode('utf-16')
+    # if 'CO2_multiply_16V' in methodBlock:
+    #     firstAcq = False
+    if 'Contin_Start' in methodBlock:
+        lastAcq = True
+        #TODO: make this a more robust test
+
+    # 3.3 sample name
+    # Find start of block with sample name
+    startName = buff.find('CSeqLineIndexData')
+    # Rough guess of range where sample name is, accounting for a large variation in length
+    nameBlock = buff[startName+200:startName+400].decode('utf-16')
+    #Exact name based on locations of unicode strings directly before and after
+    sampleName = nameBlock[(nameBlock.find('Background')+18):(nameBlock.find('Identifier 1')-2)]
+    # Encode as ascii for consistency
+    sampleName = sampleName.encode('ascii')
+
+    return voltRef, voltSam, d13C_final, d18O_final, d13C_ref, d18O_ref, sampleName, lastAcq
 
 
 def CIDS_parser(filePath):
@@ -261,33 +290,35 @@ def CIDS_parser(filePath):
 
 
 def CIDS_cleaner(samples):
-  '''function for cleaning up a parsed CIDS file and alerting to any corrupted samples'''
+    '''function for cleaning up a parsed CIDS file and alerting to any corrupted samples'''
 
-  # Cleaning up the parsed file
-  # because of the way the parser is written, an extra empty sample is added to the end of the list
-  if not samples[-1].acqs:
-    samples.pop()
+    # Cleaning up the parsed file
+    # because of the way the parser is written, an extra empty sample is added to the end of the list
+    if not samples[-1].acqs:
+        del samples[-1]
 
-  # checking for samples with not enough acqs, alerting if there are some
-  temp=8
-  lowAcqs= [k for k in samples if len(k.acqs)<temp]
-  if not lowAcqs:
-    print 'All samples have at least %d acquistions' % temp
 
-  else:
-    print 'Samples with too few acqs are:'
-    print '\n'.join(['Sample '+ str(k.num)+ ' has ' + str(len(k.acqs)) + ' acquisitions' for k in samples])
+    # checking for samples with not enough acqs, alerting if there are some
+    temp=8
+    lowAcqs= [k for k in samples if len(k.acqs)<temp]
+    if not lowAcqs:
+        print 'All samples have at least %d acquistions' % temp
 
-  # converting the voltages and backgrounds to arrays so that they can be easily used to do calculations
-  for i in range(len(samples)):
-    for j in range(len(samples[i].acqs)):
-      samples[i].acqs[j].voltSam=np.asarray(samples[i].acqs[j].voltSam)
-      samples[i].acqs[j].voltRef=np.asarray(samples[i].acqs[j].voltRef)
-      samples[i].acqs[j].background=np.asarray(samples[i].acqs[j].background)
+    else:
+        print 'Samples with too few acqs are:'
+        print '\n'.join(['Sample '+ str(k.num)+ ': '+ k.name +' has ' + str(len(k.acqs)) + ' acquisitions' for k in lowAcqs])
 
-  print 'All samples are cleaned, and voltages converted to arrays'
+    # converting the voltages and backgrounds to arrays so that they can be easily used to do calculations
+    for i in range(len(samples)):
+        else:
+            for j in range(len(samples[i].acqs)):
+                samples[i].acqs[j].voltSam=np.asarray(samples[i].acqs[j].voltSam)
+                samples[i].acqs[j].voltRef=np.asarray(samples[i].acqs[j].voltRef)
+                samples[i].acqs[j].background=np.asarray(samples[i].acqs[j].background)
 
-  return samples
+    print 'All samples are cleaned, and voltages converted to arrays'
+
+    return samples
 
 def CIDS_subtractBackground(samples):
   '''Function to subtract the backgrounds off of all voltages'''
