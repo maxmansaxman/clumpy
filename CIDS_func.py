@@ -199,11 +199,10 @@ def Isodat_File_Parser(fileName):
 
     # 3.4 background values
     #find start of block with background values
-    startBackground = buff.find('CISLScriptMessageData')
-    stopBackground = buff.find('CMeasurmentErrors')
-    #Note incorrect spelling of 'measurement' is intentional
-    backgroundBlock = buff[startBackground+80:stopBackground].decode('utf-16')
-    
+    # startBackground = buff.find('CISLScriptMessageData')
+    # stopBackground = buff.find('CMeasurmentErrors')
+    # #Note incorrect spelling of 'measurement' is intentional
+    # backgroundBlock = buff[startBackground+80:stopBackground].decode('utf-16')
 
     return voltRef, voltSam, d13C_final, d18O_final, d13C_ref, d18O_ref, sampleName, lastAcq
 
