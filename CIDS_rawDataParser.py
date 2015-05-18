@@ -35,6 +35,7 @@ if modeChoice == 'm':
 
             if len(acqName) == 0:
                 break
+            acqName = acqName.strip('"')
             acqName = os.path.abspath(acqName)
             acqNum=re.findall('[0-9]{4}',acqName.split('/')[-1])[0] #finds the acquision number from the file name, no matter how long the path nor what it contains
             acqNum=int(acqNum)
@@ -68,8 +69,8 @@ elif modeChoice == 'a':
     print('Automatic mode selected')
     while True:
         acqFolder = raw_input('Drag a folder containing all acquisitions: ').strip()
+        acqFolder = acqFolder.strip('"')
         acqFolder = os.path.abspath(acqFolder)
-        acqFolder = os.path.dirname(acqFolder)
         if os.path.exists(acqFolder):
             break
         else:
