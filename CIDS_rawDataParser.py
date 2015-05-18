@@ -99,8 +99,8 @@ elif modeChoice == 'a':
 
     for i in range(startNumIndex,stopNumIndex+1):
         acqName = acqFolder +'/'+ acqList[i]
-        # Catches files with a size less than 60 kb and skips them
-        if os.path.getsize(acqName) < 60000:
+        # Catches files with a size less than 129 kb and skips them
+        if os.path.getsize(acqName) < 129000:
             print('Skipping acq num ' + str(acqList[i]) + 'because file too small')
             continue
         # Finds the acquision number from the file name, no matter how long the path nor what it contains
