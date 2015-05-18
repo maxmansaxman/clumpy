@@ -24,6 +24,7 @@ if modeChoice == 'm':
     print('Manual mode selected')
     while True:
         sampleName = raw_input('Name of new sample, or press RETURN to stop: ')
+        sampleName = os.path.abspath(sampleName)
         if len(sampleName) == 0:
             break
         analyses.append(CIDS_func.CI())
@@ -32,6 +33,7 @@ if modeChoice == 'm':
         while True:
             acqName = raw_input('Drag an acq file for sample ' + analyses[-1].name +', or press RETURN to stop: ')
             acqName=acqName.strip()
+            acqName = os.path.abspath(acqName)
             if len(acqName) == 0:
                 break
             acqNum=re.findall('[0-9]{4}',acqName.split('/')[-1])[0] #finds the acquision number from the file name, no matter how long the path nor what it contains
@@ -64,7 +66,15 @@ if modeChoice == 'm':
 
 elif modeChoice == 'a':
     print('Automatic mode selected')
-    acqFolder = raw_input('Drag a folder containing all acquisitions: ').strip()
+    while True:
+        acqFolder = raw_input('Drag a folder containing all acquisitions: ').strip()
+        acqFolder = os.path.abspath(acqFolder)
+        acqFolder = os.path.dirname(acqFolder)
+        if os.path.exists(acqFolder):
+            break
+        else:
+            print('Invalid folder, please try again ')
+
     acqList = [i for i in os.listdir(acqFolder) if i.endswith('.did')]
     if len(acqList) == 0:
         print("No acquisiton files ('.did') found in folder ")

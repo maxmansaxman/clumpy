@@ -18,6 +18,7 @@ class CI:
         self.type=''
         self.num=0
         self.user=''
+        self.skipFirstAcq = False
 
   def __getattr__(self,name):
         if not self.acqs:
@@ -196,6 +197,14 @@ def Isodat_File_Parser(fileName):
     # Encode as ascii for consistency
     sampleName = sampleName.encode('ascii')
 
+    # 3.4 background values
+    #find start of block with background values
+    startBackground = buff.find('CISLScriptMessageData')
+    stopBackground = buff.find('CMeasurmentErrors')
+    #Note incorrect spelling of 'measurement' is intentional
+    backgroundBlock = buff[startBackground+80:stopBackground].decode('utf-16')
+    
+
     return voltRef, voltSam, d13C_final, d18O_final, d13C_ref, d18O_ref, sampleName, lastAcq
 
 
@@ -310,7 +319,6 @@ def CIDS_cleaner(samples):
 
     # converting the voltages and backgrounds to arrays so that they can be easily used to do calculations
     for i in range(len(samples)):
-        else:
             for j in range(len(samples[i].acqs)):
                 samples[i].acqs[j].voltSam=np.asarray(samples[i].acqs[j].voltSam)
                 samples[i].acqs[j].voltRef=np.asarray(samples[i].acqs[j].voltRef)
@@ -419,9 +427,14 @@ def CI_averages(sample):
     props2=['d13C','d13C_stdev','d18O_gas','d18O_min','d18O_stdev',
         'd47','d47_stdev','D47_raw','D47_stdev','d48','D48_raw','D48_stdev']
 
-    values=np.zeros((len(sample.acqs),len(props1))) #preallocating for value storage
+    acqsToUse = range(len(sample.acqs))
 
-    for i in range(len(sample.acqs)):
+    if sample.skipFirstAcq:
+        del acqsToUse[0]
+
+    values=np.zeros((len(acqsToUse),len(props1))) #preallocating for value storage
+
+    for i in acqsToUse:
         values[i,:]=[sample.acqs[i].d45,sample.acqs[i].d46,sample.acqs[i].d47,
         sample.acqs[i].d48, sample.acqs[i].D47_raw,sample.acqs[i].D48_raw,sample.acqs[i].d13C_sample,sample.acqs[i].d18O_sample, sample.acqs[i].d18O_min]
         # values[i,:]=[sample.acqs[i].d45,sample.acqs[i].d46,sample.acqs[i].d47,
