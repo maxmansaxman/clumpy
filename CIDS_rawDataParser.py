@@ -37,7 +37,8 @@ if modeChoice == 'm':
                 break
             acqName = acqName.strip('"')
             acqName = os.path.abspath(acqName)
-            acqNum=re.findall('[0-9]{4}',acqName.split('/')[-1])[0] #finds the acquision number from the file name, no matter how long the path nor what it contains
+            # acqNum=re.findall('[0-9]{4}',acqName.split('/')[-1])[0] #finds the acquision number from the file name, no matter how long the path nor what it contains
+            acqNum=re.findall('[0-9]{4}',os.path.basename(acqName))[0] #finds the acquision number from the file name, no matter how long the path nor what it contains
             acqNum=int(acqNum)
             if acqNum in imported:
                 print('You already imported this file')
@@ -99,8 +100,8 @@ elif modeChoice == 'a':
 
     for i in range(startNumIndex,stopNumIndex+1):
         acqName = acqFolder +'/'+ acqList[i]
-        # Catches files with a size less than 129 kb and skips them
-        if os.path.getsize(acqName) < 129000:
+        # Catches files with a size less than 123 kb and skips them
+        if os.path.getsize(acqName) < 123000:
             print('Skipping acq num ' + str(acqList[i]) + 'because file too small')
             continue
         # Finds the acquision number from the file name, no matter how long the path nor what it contains
@@ -167,7 +168,8 @@ if len(analyses) != 0:
 
     incFirstAcq = raw_input('Do you want to ignore the first acq of every sample (y/n)? ')
     if incFirstAcq.lower() == 'y':
-        [i.skipFirstAcq = True for i in analyses]
+        for i in range(len(analyses)):
+            analyses[i].skipFirstAcq = True
     print('Cleaning up analyses...')
     analyses=CIDS_func.CIDS_cleaner(analyses)
     print('Performing raw data reductions...')

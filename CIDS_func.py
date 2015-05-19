@@ -431,24 +431,26 @@ def CI_averages(sample):
     if sample.skipFirstAcq:
         del acqsToUse[0]
 
-    values=np.zeros((len(acqsToUse),len(props1))) #preallocating for value storage
+    values=[]#preallocating for value storage
 
     for i in acqsToUse:
-        values[i,:]=[sample.acqs[i].d45,sample.acqs[i].d46,sample.acqs[i].d47,
-        sample.acqs[i].d48, sample.acqs[i].D47_raw,sample.acqs[i].D48_raw,sample.acqs[i].d13C_sample,sample.acqs[i].d18O_sample, sample.acqs[i].d18O_min]
+        values.append([sample.acqs[i].d45,sample.acqs[i].d46,sample.acqs[i].d47,
+        sample.acqs[i].d48, sample.acqs[i].D47_raw,sample.acqs[i].D48_raw,sample.acqs[i].d13C_sample,sample.acqs[i].d18O_sample, sample.acqs[i].d18O_min])
         # values[i,:]=[sample.acqs[i].d45,sample.acqs[i].d46,sample.acqs[i].d47,
         # sample.acqs[i].d48, sample.acqs[i].D47_raw,sample.acqs[i].D48_raw,sample.acqs[i].d13C_sample,sample.acqs[i].d18O_sample]
 
-    (sample.d45, sample.d46, sample.d47, sample.d48, sample.D47_raw, sample.D48_raw,
-    sample.d13C, sample.d18O, sample.d18O_min) = values.mean(axis=0)
+    if len(values) != 0:
+        values = np.asarray(values)
+        (sample.d45, sample.d46, sample.d47, sample.d48, sample.D47_raw, sample.D48_raw,
+        sample.d13C, sample.d18O, sample.d18O_min) = values.mean(axis=0)
 
-    # (sample.d45, sample.d46, sample.d47, sample.d48, sample.D47_raw, sample.D48_raw,
-    # sample.d13C, sample.d18O) = values.mean(axis=0)
+        # (sample.d45, sample.d46, sample.d47, sample.d48, sample.D47_raw, sample.D48_raw,
+        # sample.d13C, sample.d18O) = values.mean(axis=0)
 
-    (sample.d45_stdev, sample.d46_stdev, sample.d47_stdev, sample.d48_stdev, sample.D47_stdev,
-    sample.D48_stdev, sample.d13C_stdev,sample.d18O_stdev, temp) = values.std(axis=0)
+        (sample.d45_stdev, sample.d46_stdev, sample.d47_stdev, sample.d48_stdev, sample.D47_stdev,
+        sample.D48_stdev, sample.d13C_stdev,sample.d18O_stdev, temp) = values.std(axis=0)
 
-    sample.D47_sterr=sample.D47_stdev/np.sqrt(len(sample.acqs))
+        sample.D47_sterr=sample.D47_stdev/np.sqrt(len(sample.acqs))
 
 def FlatList_exporter(samples,fileName):
     '''Exports a CSV file that is the same format as a traditional flat list'''
