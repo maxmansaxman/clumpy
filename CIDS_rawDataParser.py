@@ -134,10 +134,17 @@ elif modeChoice == 'a':
         # Catching case where name in file does not match current acq name
         if analyses[-1].name != rawSampleName :
             print('Sample name: ' + analyses[-1].name + ' does not match name in file: ' + rawSampleName + ' ')
-            nameErrorChoice = raw_input('Are you sure you want to include this acquisition (y/n)? ')
-            if nameErrorChoice.lower() == 'n':
+            nameErrorChoice = raw_input('(s)kip acquisition, (i)nclude it, or make a (n)ew sample from it? ')
+            if nameErrorChoice.lower() == 's':
                 print('Skipping acquisition ')
                 continue
+            elif nameErrorChoice.lower() == 'n':
+                print('Making a new sample with name: ' + rawSampleName)
+                analyses.append(CIDS_fund.CI())
+                analyses[-1].name = rawSampleName
+                analyses[-1].num = len(analyes)
+            else:
+                print('Including acquisition ')
 
         # if no errors caught above, actually add acquisition to analyses
         imported.append(acqNum)
@@ -157,6 +164,10 @@ else :
 if len(analyses) != 0:
     print('Acquisition imports complete')
     print(str(len(analyses)) + ' analyses were imported')
+
+    incFirstAcq = raw_input('Do you want to ignore the first acq of every sample (y/n)? ')
+    if incFirstAcq.lower() == 'y':
+        [i.skipFirstAcq = True for i in analyses]
     print('Cleaning up analyses...')
     analyses=CIDS_func.CIDS_cleaner(analyses)
     print('Performing raw data reductions...')
