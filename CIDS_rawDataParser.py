@@ -28,7 +28,7 @@ if modeChoice == 'm':
             break
         analyses.append(CIDS_func.CI())
         analyses[-1].name=sampleName
-        analyses[-1].num=len(analyses)
+        analyses[-1].num=acqNum
         while True:
             acqName = raw_input('Drag an acq file for sample ' + analyses[-1].name +', or press RETURN to stop: ')
             acqName=acqName.strip()
@@ -115,7 +115,7 @@ elif modeChoice == 'a':
         if nextAcqIsNewSample:
             analyses.append(CIDS_func.CI())
             analyses[-1].name = rawSampleName
-            analyses[-1].num = len(analyses)
+            analyses[-1].num = acqNum
             print('Found new sample, with name: ' + rawSampleName)
             nextAcqIsNewSample = False
         # If acq is a continue_start, prepare for next acq to be a new sample
@@ -141,9 +141,9 @@ elif modeChoice == 'a':
                 continue
             elif nameErrorChoice.lower() == 'n':
                 print('Making a new sample with name: ' + rawSampleName)
-                analyses.append(CIDS_fund.CI())
+                analyses.append(CIDS_func.CI())
                 analyses[-1].name = rawSampleName
-                analyses[-1].num = len(analyes)
+                analyses[-1].num = acqNum
             else:
                 print('Including acquisition ')
 
