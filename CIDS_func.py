@@ -319,9 +319,13 @@ def CIDS_cleaner(samples):
     # converting the voltages and backgrounds to arrays so that they can be easily used to do calculations
     for i in range(len(samples)):
             for j in range(len(samples[i].acqs)):
-                samples[i].acqs[j].voltSam=np.asarray(samples[i].acqs[j].voltSam)
-                samples[i].acqs[j].voltRef=np.asarray(samples[i].acqs[j].voltRef)
+                # converting voltagted to arrays, and doing 3 sig figs to match CIDS Sheet
+                samples[i].acqs[j].voltSam=np.around(np.asarray(samples[i].acqs[j].voltSam),3)
+                samples[i].acqs[j].voltRef=np.around(np.asarray(samples[i].acqs[j].voltRef),3)
                 samples[i].acqs[j].background=np.asarray(samples[i].acqs[j].background)
+                # rouding d13C and d18O of each acq to 3 sig figs to match CIDS sheet
+                (samples[i].acqs[j].d13C_sample,samples[i].acqs[j].d18O_sample) = np.around((samples[i].acqs[j].d13C_sample,samples[i].acqs[j].d18O_sample),3)
+
 
     print 'All samples are cleaned, and voltages converted to arrays'
 
@@ -381,7 +385,7 @@ def D47_calculation(acq):
     delta_measured_mean=np.zeros((3,delta_measured.shape[1]))
 
     delta_measured_mean[0,:]=np.mean(delta_measured, axis=0) # averaging for all cycles
-    delta_measured_mean[1,:]=np.std(delta_measured, axis=0)  # standard deviation among all cycles
+    delta_measured_mean[1,:]=np.std(delta_measured, axis=0,ddof=1)  # standard deviation among all cycles
     delta_measured_mean[2,:]=delta_measured_mean[1,:]/np.sqrt(len(delta_measured)) # std error among all cycles
 
     R_calculated_sample = (delta_measured_mean[0,:]/1000 + 1)*R_stoch[1,:]
@@ -448,9 +452,9 @@ def CI_averages(sample):
         # sample.d13C, sample.d18O) = values.mean(axis=0)
 
         (sample.d45_stdev, sample.d46_stdev, sample.d47_stdev, sample.d48_stdev, sample.D47_stdev,
-        sample.D48_stdev, sample.d13C_stdev,sample.d18O_stdev, temp) = values.std(axis=0)
+        sample.D48_stdev, sample.d13C_stdev,sample.d18O_stdev, temp) = values.std(axis=0,ddof=1)
 
-        sample.D47_sterr=sample.D47_stdev/np.sqrt(len(sample.acqs))
+        sample.D47_sterr=sample.D47_stdev/np.sqrt(len(values.shape[0]))
 
 def FlatList_exporter(samples,fileName):
     '''Exports a CSV file that is the same format as a traditional flat list'''
