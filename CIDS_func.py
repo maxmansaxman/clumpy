@@ -454,7 +454,7 @@ def CI_averages(sample):
         (sample.d45_stdev, sample.d46_stdev, sample.d47_stdev, sample.d48_stdev, sample.D47_stdev,
         sample.D48_stdev, sample.d13C_stdev,sample.d18O_stdev, temp) = values.std(axis=0,ddof=1)
 
-        sample.D47_sterr=sample.D47_stdev/np.sqrt(len(values.shape[0]))
+        sample.D47_sterr=sample.D47_stdev/np.sqrt(values.shape[0])
 
 def FlatList_exporter(samples,fileName):
     '''Exports a CSV file that is the same format as a traditional flat list'''
