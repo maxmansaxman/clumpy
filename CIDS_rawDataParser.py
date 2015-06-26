@@ -95,10 +95,7 @@ elif modeChoice == 'a':
     startNumIndex = acqList.index(startName)
     stopNumIndex = acqList.index(stopName)
 
-    lastAcq = False
     firstAcq = False
-    # nextAcqIsNewSample = True
-    thisAcqIsNewSample = True
 
     for i in range(startNumIndex,stopNumIndex+1):
         acqName = acqFolder +'/'+ acqList[i]
@@ -111,7 +108,7 @@ elif modeChoice == 'a':
         acqNum=int(acqNum)
         # Actually processing the file
         print('Importing acq num ' + str(acqNum) + ' ')
-        voltRef,voltSam,d13C,d18O,d13C_ref,d18O_ref,rawSampleName,lastAcq,firstAcq = CIDS_func.Isodat_File_Parser(acqName)
+        voltRef,voltSam,d13C,d18O,d13C_ref,d18O_ref,rawSampleName,firstAcq = CIDS_func.Isodat_File_Parser(acqName)
         # Creates a new sample if acquisition is not a 'CO2_multiply method'
         # If acq is an AL_Pump_Trans, declare it to be a new sample
         if firstAcq:
@@ -119,17 +116,6 @@ elif modeChoice == 'a':
             analyses[-1].name = rawSampleName
             analyses[-1].num = acqNum
             print('Found new sample, with name: ' + rawSampleName)
-
-        # if nextAcqIsNewSample:
-        #     analyses.append(CIDS_func.CI())
-        #     analyses[-1].name = rawSampleName
-        #     analyses[-1].num = acqNum
-        #     print('Found new sample, with name: ' + rawSampleName)
-        #     nextAcqIsNewSample = False
-        # If acq is a continue_start, prepare for next acq to be a new sample
-        # This must come after previous condition to account for situation where we start on a continue_start
-        # if lastAcq:
-            # nextAcqIsNewSample = True
         # Catches the rare case where an acquisition block starts with a 'CO2_multiply'
         # And checks whether this was intentional
         # if len(analyses) == 0:

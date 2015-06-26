@@ -178,7 +178,6 @@ def Isodat_File_Parser(fileName):
 
     # 3.2 whether or not method is a CO2_multiply or a *_start
     firstAcq = False
-    lastAcq = False
     startMethod = buff.find('CDualInletBlockData')
     methodBlock = buff[startMethod-120:startMethod-20].decode('utf-16')
     # if 'CO2_multiply_16V' in methodBlock:
@@ -206,7 +205,7 @@ def Isodat_File_Parser(fileName):
     # #Note incorrect spelling of 'measurement' is intentional
     # backgroundBlock = buff[startBackground+80:stopBackground].decode('utf-16')
 
-    return voltRef, voltSam, d13C_final, d18O_final, d13C_ref, d18O_ref, sampleName, lastAcq, firstAcq
+    return voltRef, voltSam, d13C_final, d18O_final, d13C_ref, d18O_ref, sampleName, firstAcq
 
 
 def CIDS_parser(filePath):
