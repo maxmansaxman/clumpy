@@ -183,9 +183,11 @@ def Isodat_File_Parser(fileName):
     methodBlock = buff[startMethod-120:startMethod-20].decode('utf-16')
     # if 'CO2_multiply_16V' in methodBlock:
     #     firstAcq = False
-    if 'Contin_Start' in methodBlock:
-        lastAcq = True
-        #TODO: make this a more robust test
+    # if 'Contin_Start' in methodBlock:
+    #     lastAcq = True
+    #     #TODO: make this a more robust test
+    if 'AL_Pump_Trans' in methodBlock:
+        firstAcq = True
 
     # 3.3 sample name
     # Find start of block with sample name
@@ -204,7 +206,7 @@ def Isodat_File_Parser(fileName):
     # #Note incorrect spelling of 'measurement' is intentional
     # backgroundBlock = buff[startBackground+80:stopBackground].decode('utf-16')
 
-    return voltRef, voltSam, d13C_final, d18O_final, d13C_ref, d18O_ref, sampleName, lastAcq
+    return voltRef, voltSam, d13C_final, d18O_final, d13C_ref, d18O_ref, sampleName, lastAcq, firstAcq
 
 
 def CIDS_parser(filePath):
