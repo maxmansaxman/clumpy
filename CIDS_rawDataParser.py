@@ -160,8 +160,8 @@ if len(analyses) != 0:
     print('Acquisition imports complete')
     print(str(len(analyses)) + ' analyses were imported')
 
-    incFirstAcq = raw_input('Do you want to ignore the first acq of every sample (y/n)? ')
-    if incFirstAcq.lower() == 'y':
+    includeFirstAcq = raw_input('Do you want to ignore the first acq of every sample (y/n)? ')
+    if includeFirstAcq.lower() == 'y':
         for i in range(len(analyses)):
             analyses[i].skipFirstAcq = True
     print('Cleaning up analyses...')
@@ -172,6 +172,10 @@ if len(analyses) != 0:
     exportName = 'pythonFlatListExport'
     CIDS_func.FlatList_exporter(analyses,exportName)
     print('Analyses successfully exported')
+    doDaeron = raw_input('Export analyses for a Daeron-style ARF reduction (y/n)? ')
+    if doDaeron.lower() == 'y':
+        CIDS_func.Get_gases(analyses)
+        CIDS_func.Daeron_exporter(analyses,exportName)
 
 
 

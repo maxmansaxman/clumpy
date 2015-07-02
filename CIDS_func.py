@@ -16,9 +16,10 @@ class CI:
         self.acqs=[]
         self.date=''
         self.type=''
-        self.num=0
+        self.num=np.nan
         self.user=''
         self.skipFirstAcq = False
+        self.TCO2 = np.nan
 
   def __getattr__(self,name):
         if not self.acqs:
@@ -469,6 +470,51 @@ def FlatList_exporter(samples,fileName):
         item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev ])
     export.close()
     return
+
+def Get_gases(samples):
+    '''Finds which analyses are heated and equilibrated gases, and assigns them TCO2 values'''
+    properNames = raw_input("Do all equilibrated gases have '25' in name? (y/n)").lower()
+    for item in samples:
+        if 'BOC' in item.name.upper():
+            if properNames == 'y':
+                if '25' in item.name:
+                    item.TCO2 = 25
+                    item.type = 'eg'
+                else :
+                    item.TCO2 = 1000
+                    item.type = 'hg'
+            else :
+                while True:
+                    choice = raw_input('Is acq num: ' + str(item.num) + ' with name: ' + item.name + ' a (h)eated gas, an (e)quilibrated gas?, or (s)kip? ')
+                    if choice.lower() == 'h':
+                        item.TCO2 = 1000
+                        item.type = 'hg'
+                        break
+                    elif choice.lower() == 'e':
+                        item.TCO2 = 25
+                        item.type = 'eg'
+                        break
+                    elif choice.lower() == 's':
+                        print('Skipping this sample ')
+                        break
+                    else:
+                        print('Not a valid entry, please try again')
+    print('All heated and equilibrated gases have been found and labeled ')
+    return
+
+def Daeron_exporter(samples, fileName):
+    '''Exports analyses in a csv that is formatted for Matthieu Daeron's xlcor47 script'''
+
+    export=open(fileName +'_daeron'+ '.csv','wb')
+    wrt=csv.writer(export,dialect='excel')
+    for item in samples:
+        if np.isnan(item.TCO2):
+            wrt.writerow([item.name, item.d47, item.D47_raw, item.D47_sterr, ])
+        else :
+            wrt.writerow([item.name, item.d47, item.D47_raw, item.D47_sterr, item.TCO2])
+    export.close()
+    return
+
 
 def Pressure_Baseline_Processer(fileFolder):
     '''Pulls raw intensity data out of a folder of peak scans'''
