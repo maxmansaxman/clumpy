@@ -101,7 +101,7 @@ elif modeChoice == 'a':
         acqName = acqFolder +'/'+ acqList[i]
         # Catches files with a size less than 123 kb and skips them
         if os.path.getsize(acqName) < 123000:
-            print('Skipping acq num ' + str(acqList[i]) + 'because file too small')
+            print('Skipping acq num ' + str(acqList[i]) + ' because file too small')
             continue
         # Finds the acquision number from the file name, no matter how long the path nor what it contains
         acqNum=re.findall('[0-9]{4}',acqName.split('/')[-1])[0]
@@ -111,6 +111,12 @@ elif modeChoice == 'a':
         voltRef,voltSam,d13C,d18O,d13C_ref,d18O_ref,rawSampleName,firstAcq = CIDS_func.Isodat_File_Parser(acqName)
         # Creates a new sample if acquisition is not a 'CO2_multiply method'
         # If acq is an AL_Pump_Trans, declare it to be a new sample
+
+        # Catches acqs where enough gas did not make it to the bellows in and skips them
+        if voltSam[-1][0] < 15000:
+            print('Skipping acq ' + str(acqList[i]) + ' from sample ' + rawSampleName + ' because voltage too low on mass 44: ' str(voltSam[-1][0]))
+            continue
+
         if firstAcq:
             analyses.append(CIDS_func.CI())
             analyses[-1].name = rawSampleName
@@ -126,8 +132,25 @@ elif modeChoice == 'a':
         #     elif blockStartChoice.lower() == 'y':
         #         analyses.append(CIDS_func.CI())
         #         analyses[-1].name = rawSampleName
+
+        # Catching case where evaluated d18O does not match, indicating a clearly different sample
+        elif abs((d18O - analyses[-1].acqs[-1].d18O_sample)/analyses[-1].acqs[-1].d18O_sample) > 0.1:
+            print('This acquisition composition: \n d13C = ' + str(d13C) + ', d18O = ' + str(d18O))
+            print('is significantly different than the last for this sample: \n d13C = ' + str(analyses[-1].acqs[-1].d13C_sample) + ', d18O = ' + str(analyses[-1].acqs[-1].d18O_sample))
+            oxygen18ErrorChoice = raw_input('(s)kip acquisition, (i)nclude it, or make a (n)ew sample from it? ')
+            if oxygen18ErrorChoice.lower() == 's':
+                print('Skipping acquisition ')
+                continue
+            elif oxygen18ErrorChoice.lower() == 'n':
+                print('Making a new sample with name: ' + rawSampleName)
+                analyses.append(CIDS_func.CI())
+                analyses[-1].name = rawSampleName
+                analyses[-1].num = acqNum
+            else:
+                print('Including acquisition ')
+
         # Catching case where name in file does not match current acq name
-        if analyses[-1].name != rawSampleName :
+        elif analyses[-1].name != rawSampleName :
             print('Sample name: ' + analyses[-1].name + ' does not match name in file: ' + rawSampleName + ' ')
             nameErrorChoice = raw_input('(s)kip acquisition, (i)nclude it, or make a (n)ew sample from it? ')
             if nameErrorChoice.lower() == 's':
@@ -140,6 +163,7 @@ elif modeChoice == 'a':
                 analyses[-1].num = acqNum
             else:
                 print('Including acquisition ')
+
 
         # if no errors caught above, actually add acquisition to analyses
         imported.append(acqNum)

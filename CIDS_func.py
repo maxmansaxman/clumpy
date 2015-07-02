@@ -417,8 +417,6 @@ def D47_calculations(samples):
       samples[i].acqs[j]=D47_calculation(samples[i].acqs[j])
       samples[i].acqs[j]=carb_gas_oxygen_fractionation(samples[i].acqs[j])
 
-
-
     CI_averages(samples[i])
 
   return samples
@@ -473,7 +471,7 @@ def FlatList_exporter(samples,fileName):
 
 def Get_gases(samples):
     '''Finds which analyses are heated and equilibrated gases, and assigns them TCO2 values'''
-    properNames = raw_input("Do all equilibrated gases have '25' in name? (y/n)").lower()
+    properNames = raw_input("Do all equilibrated gases have '25' in name? (y/n) ").lower()
     for item in samples:
         if 'BOC' in item.name.upper():
             if properNames == 'y':
