@@ -114,7 +114,7 @@ elif modeChoice == 'a':
 
         # Catches acqs where enough gas did not make it to the bellows in and skips them
         if voltSam[-1][0] < 15000:
-            print('Skipping acq ' + str(acqList[i]) + ' from sample ' + rawSampleName + ' because voltage too low on mass 44: ' str(voltSam[-1][0]))
+            print('Skipping acq ' + str(acqList[i]) + ' from sample ' + rawSampleName + ' because voltage too low on mass 44: ' + str(voltSam[-1][0]))
             continue
 
         if firstAcq:
