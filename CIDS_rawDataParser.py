@@ -134,20 +134,23 @@ elif modeChoice == 'a':
         #         analyses[-1].name = rawSampleName
 
         # Catching case where evaluated d18O does not match, indicating a clearly different sample
-        elif abs((d18O - analyses[-1].acqs[-1].d18O_sample)/analyses[-1].acqs[-1].d18O_sample) > 0.1:
-            print('This acquisition composition: \n d13C = ' + str(d13C) + ', d18O = ' + str(d18O))
-            print('is significantly different than the last for this sample: \n d13C = ' + str(analyses[-1].acqs[-1].d13C_sample) + ', d18O = ' + str(analyses[-1].acqs[-1].d18O_sample))
-            oxygen18ErrorChoice = raw_input('(s)kip acquisition, (i)nclude it, or make a (n)ew sample from it? ')
-            if oxygen18ErrorChoice.lower() == 's':
-                print('Skipping acquisition ')
-                continue
-            elif oxygen18ErrorChoice.lower() == 'n':
-                print('Making a new sample with name: ' + rawSampleName)
-                analyses.append(CIDS_func.CI())
-                analyses[-1].name = rawSampleName
-                analyses[-1].num = acqNum
-            else:
-                print('Including acquisition ')
+        elif len(analyses[-1].acqs) > 0:
+            if abs((d18O - analyses[-1].acqs[-1].d18O_sample)/analyses[-1].acqs[-1].d18O_sample) > 0.1:
+                #print('This acquisition composition: \n d13C = ' + str(d13C) + ', d18O = ' + str(d18O))
+                print('This acquisition: \n name = {0}, d13C = {1:.3f}, d18O = {2:.3f}'.format(rawSampleName, d13C, d18O))
+                print('is significantly different than the last one: \n name = {0}, d13C = {1:.3f}, d18O = {2:.3f}'.format(analyses[-1].name, analyses[-1].acqs[-1].d13C_sample, analyses[-1].acqs[-1].d18O_sample))
+                # print('is significantly different than the last for this sample: \n d13C = ' + str(analyses[-1].acqs[-1].d13C_sample) + ', d18O = ' + str(analyses[-1].acqs[-1].d18O_sample))
+                oxygen18ErrorChoice = raw_input('(s)kip acquisition, (i)nclude it, or make a (n)ew sample from it? ')
+                if oxygen18ErrorChoice.lower() == 's':
+                    print('Skipping acquisition ')
+                    continue
+                elif oxygen18ErrorChoice.lower() == 'n':
+                    print('Making a new sample with name: ' + rawSampleName)
+                    analyses.append(CIDS_func.CI())
+                    analyses[-1].name = rawSampleName
+                    analyses[-1].num = acqNum
+                else:
+                    print('Including acquisition ')
 
         # Catching case where name in file does not match current acq name
         elif analyses[-1].name != rawSampleName :
