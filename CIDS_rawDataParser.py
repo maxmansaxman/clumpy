@@ -95,7 +95,7 @@ elif modeChoice == 'a':
     startNumIndex = acqList.index(startName)
     stopNumIndex = acqList.index(stopName)
 
-    firstAcq = False
+    firstAcq = True
 
     for i in range(startNumIndex,stopNumIndex+1):
         acqName = acqFolder +'/'+ acqList[i]
