@@ -95,7 +95,7 @@ elif modeChoice == 'a':
     startNumIndex = acqList.index(startName)
     stopNumIndex = acqList.index(stopName)
 
-    firstAcq = True
+    firstAcq = False
 
     for i in range(startNumIndex,stopNumIndex+1):
         acqName = acqFolder +'/'+ acqList[i]
@@ -116,6 +116,8 @@ elif modeChoice == 'a':
         if voltSam[-1][0] < 15000:
             print('Skipping acq ' + str(acqList[i]) + ' from sample ' + rawSampleName + ' because voltage too low on mass 44: ' + str(voltSam[-1][0]))
             continue
+        if len(analyses) > 0:
+            firstAcq = True    
 
         if firstAcq:
             analyses.append(CIDS_func.CI())
