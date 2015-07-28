@@ -18,15 +18,13 @@ class CI_VALUE(object):
         print('attempting to access...')
         if len(instance.voltRef>6):
             if self.name in ['d45', 'd46', 'd47', 'd48', 'D47_raw', 'D48_raw']:
-                return D47_calculation_v2(instance, self.name)
+                return D47_calculation_valued(instance, self.name)
 
     def __set__(self, obj, value):
         raise AttributeError('Cannot change CI calculation scheme')
 
     def __delete__(self, instance):
         raise AttributeError('Cannot delete CI value')
-
-
 
 
 class CI(object):
@@ -78,12 +76,14 @@ class ACQUISITION(object):
         self.d46_excel=0
         self.d47_excel=0
         self.d48_excel=0
-        self.d46=CI_VALUE('d46')          #these are taken care of by the D47_calculation function now
-        self.d45=CI_VALUE('d46')
-        self.D47_raw=CI_VALUE('D47_raw')
-        self.d47=CI_VALUE('d47')
-        self.D48_raw=CI_VALUE('D48_raw')
-        self.d48=CI_VALUE('d48')
+
+
+    d46=CI_VALUE('d46')          
+    d45=CI_VALUE('d46')
+    D47_raw=CI_VALUE('D47_raw')
+    d47=CI_VALUE('d47')
+    D48_raw=CI_VALUE('D48_raw')
+    d48=CI_VALUE('d48')
 
 
     # def __getattr__(self,name):    #the first time this is called, calculates all relevant values, and stores them. So, next time it's not called
@@ -434,7 +434,7 @@ def D47_calculations(samples):
 
   for i in range(len(samples)):
     for j in range(len(samples[i].acqs)):
-      samples[i].acqs[j]=D47_calculation(samples[i].acqs[j])
+    #   samples[i].acqs[j]=D47_calculation(samples[i].acqs[j])
       samples[i].acqs[j]=carb_gas_oxygen_fractionation(samples[i].acqs[j])
 
     CI_averages(samples[i])
@@ -461,7 +461,7 @@ def CI_averages(sample):
         values.append([sample.acqs[i].d45,sample.acqs[i].d46,sample.acqs[i].d47,
         sample.acqs[i].d48, sample.acqs[i].D47_raw,sample.acqs[i].D48_raw,sample.acqs[i].d13C_sample,sample.acqs[i].d18O_sample, sample.acqs[i].d18O_min])
         # values[i,:]=[sample.acqs[i].d45,sample.acqs[i].d46,sample.acqs[i].d47,
-        # sample.acqs[i].d48, sample.acqs[i].D47_raw,sample.acqs[i].D48_raw,sample.acqs[i].d13C_sample,sample.acqs[i].d18O_sample]
+        # sample.acqs[i].d48, samle.acqs[i].D47_raw,sample.acqs[i].D48_raw,sample.acqs[i].d13C_sample,sample.acqs[i].d18O_sample]
 
     if len(values) != 0:
         values = np.asarray(values)
@@ -576,7 +576,7 @@ def Pressure_Baseline_Processer(fileFolder):
 
     return int44, int49, minimums
 
-def D47_calculation_v2(acq, objName):
+def D47_calculation_valued(acq, objName):
     '''Performs all the clumped isotope calculations for a single acq'''
 
     vpdb_13C=0.0112372 # values copied from CIDS spreadsheet
