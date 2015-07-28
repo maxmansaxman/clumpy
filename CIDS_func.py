@@ -7,10 +7,27 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import struct
-#
-# class RATIO(object):
-#     '''subclass defining how important isotopic ratios are calculated'''
-#
+
+class CI_VALUE(object):
+    '''subclass defining how important isotopic ratios are calculated'''
+
+    def __init__(self, name):
+        self.name = name
+
+    def __get__(self,instance,cls):
+        print('attempting to access...')
+        if len(instance.voltRef>6):
+            if self.name in ['d45', 'd46', 'd47', 'd48', 'D47_raw', 'D48_raw']:
+                return D47_calculation_v2(instance, self.name)
+
+    def __set__(self, obj, value):
+        raise AttributeError('Cannot change CI calculation scheme')
+
+    def __delete__(self, instance):
+        raise AttributeError('Cannot delete CI value')
+
+
+
 
 class CI(object):
     "A class for all the attributes of a single clumped isotope measurement"
@@ -61,23 +78,23 @@ class ACQUISITION(object):
         self.d46_excel=0
         self.d47_excel=0
         self.d48_excel=0
-     # self.d46=0           #these are taken care of by the D47_calculation function now
-     # self.d45=0
-    #    self.D47_raw=0
-    #    self.d47=0
-    #    self.D48_raw=0
-    #    self.d48=0
+        self.d46=CI_VALUE('d46')          #these are taken care of by the D47_calculation function now
+        self.d45=CI_VALUE('d46')
+        self.D47_raw=CI_VALUE('D47_raw')
+        self.d47=CI_VALUE('d47')
+        self.D48_raw=CI_VALUE('D48_raw')
+        self.d48=CI_VALUE('d48')
 
 
-    def __getattr__(self,name):    #the first time this is called, calculates all relevant values, and stores them. So, next time it's not called
-        if name in ['d45','d46','d47','d48','D47_raw','D48_raw', 'd45_stdev',
-                'd46_stdev','d47_stdev','d48_stdev','D47_stdev','D47_sterr','D48_stdev', 'd18O_min']:
-            D47_calculation(self)
-            carb_gas_oxygen_fractionation(self)
-
-        else:
-            raise AttributeError, name
-
+    # def __getattr__(self,name):    #the first time this is called, calculates all relevant values, and stores them. So, next time it's not called
+    #     if name in ['d45','d46','d47','d48','D47_raw','D48_raw', 'd45_stdev',
+    #             'd46_stdev','d47_stdev','d48_stdev','D47_stdev','D47_sterr','D48_stdev', 'd18O_min']:
+    #         D47_calculation(self)
+    #         carb_gas_oxygen_fractionation(self)
+    #
+    #     else:
+    #         raise AttributeError, name
+    #
 
 
 
@@ -558,3 +575,66 @@ def Pressure_Baseline_Processer(fileFolder):
 
 
     return int44, int49, minimums
+
+def D47_calculation_v2(acq, objName):
+    '''Performs all the clumped isotope calculations for a single acq'''
+
+    vpdb_13C=0.0112372 # values copied from CIDS spreadsheet
+    vsmow_18O=0.0020052
+    vsmow_17O=0.0003799
+    lambda_17=0.5164
+
+    R13_sa=(acq.d13C_sample/1000+1)*vpdb_13C
+    R18_sa=(acq.d18O_sample/1000+1)*vsmow_18O
+    R17_sa=np.power((R18_sa/vsmow_18O),lambda_17)*vsmow_17O
+
+    R13_ref=(acq.d13Cref/1000+1)*vpdb_13C
+    R18_ref=(acq.d18Oref/1000+1)*vsmow_18O
+    R17_ref=np.power((R18_ref/vsmow_18O),lambda_17)*vsmow_17O
+
+    # calculating stochastic ratios
+    # to keep things organized and avoid repetetive code lines,
+    # organizing calculations in arrays where item 1 is sample gas, item 2 is ref gas
+    R13=np.array([R13_sa, R13_ref])
+    R17=np.array([R17_sa, R17_ref])
+    R18=np.array([R18_sa, R18_ref])
+
+
+    R45_stoch=R13+2*R17
+    R46_stoch=2*R13*R17+R17*R17+2*R18
+    R47_stoch=2*R13*R18+2*R17*R18+R13*R17*R17
+    R48_stoch=2*R17*R18*R13+R18*R18
+    R49_stoch=R13*R18*R18
+
+    R_stoch=np.array([R45_stoch, R46_stoch, R47_stoch, R48_stoch, R49_stoch]).T
+
+    # calculating measured voltage ratios, with sample/ref bracketing
+    R_measured_sample=(acq.voltSam[:,1:6]/(np.tile(acq.voltSam[:,0],(5,1)).T))
+    R_measured_ref=(acq.voltRef[:,1:6]/(np.tile(acq.voltRef[:,0],(5,1)).T))
+    delta_measured=np.zeros(np.shape(R_measured_sample)) # Preallocating for size of delta array
+
+    for l in range(len(R_measured_sample)):
+        delta_measured[l,:]=(R_measured_sample[l,:]/((R_measured_ref[l,:]+R_measured_ref[l+1,:])/2)-1)*1000
+    # couches ratios in sample/std bracketing, put in delta notation
+
+    delta_measured_mean=np.zeros((3,delta_measured.shape[1]))
+
+    delta_measured_mean[0,:]=np.mean(delta_measured, axis=0) # averaging for all cycles
+    delta_measured_mean[1,:]=np.std(delta_measured, axis=0,ddof=1)  # standard deviation among all cycles
+    delta_measured_mean[2,:]=delta_measured_mean[1,:]/np.sqrt(len(delta_measured)) # std error among all cycles
+
+    R_calculated_sample = (delta_measured_mean[0,:]/1000 + 1)*R_stoch[1,:]
+    D_raw=(R_calculated_sample/R_stoch[0,:] - 1)*1000
+
+
+    d45=delta_measured_mean[0,0]
+    d46=delta_measured_mean[0,1]
+    d47=delta_measured_mean[0,2]
+    d48=delta_measured_mean[0,3]
+    D47_raw=D_raw[2]-D_raw[0]-D_raw[1]
+    D48_raw=D_raw[3]-D_raw[0]-D_raw[1]
+
+
+    calculatedCIValues = {'d45': d45, 'd46': d46, 'd47': d47, 'd48': d48, 'D47_raw': D47_raw, 'D48_raw': D48_raw}
+
+    return calculatedCIValues[objName]
