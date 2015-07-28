@@ -7,11 +7,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import struct
+#
+# class RATIO(object):
+#     '''subclass defining how important isotopic ratios are calculated'''
+#
 
-class CI:
-  "A class for all the attributes of a single clumped isotope measurement"
+class CI(object):
+    "A class for all the attributes of a single clumped isotope measurement"
 
-  def __init__(self):
+    def __init__(self):
         self.name=''
         self.acqs=[]
         self.date=''
@@ -21,7 +25,7 @@ class CI:
         self.skipFirstAcq = False
         self.TCO2 = np.nan
 
-  def __getattr__(self,name):
+    def __getattr__(self,name):
         if not self.acqs:
             print 'No acquisitions for current sample'
 
@@ -35,28 +39,28 @@ class CI:
 
 
 
-class ACQUISITION:
-  "A class for all the attributes of a single clumped isotope acquision"
+class ACQUISITION(object):
+    "A class for all the attributes of a single clumped isotope acquision"
 
 
-  def __init__(self,acqNum):
-      self.acqNum=acqNum
-      self.voltSam=[]
-      self.voltRef=[]
-      self.background=[]
-      self.d13C_sample = 0
-      self.d18O_sample = 0
-      self.d13Cref = 0
-      self.d18Oref = 0
-      self.date=''
-      self.time=''
+    def __init__(self,acqNum):
+        self.acqNum=acqNum
+        self.voltSam=[]
+        self.voltRef=[]
+        self.background=[]
+        self.d13C_sample = 0
+        self.d18O_sample = 0
+        self.d13Cref = 0
+        self.d18Oref = 0
+        self.date=''
+        self.time=''
 
-      self.D47_excel=0
-      self.D48_excel=0
-      self.d45_excel=0
-      self.d46_excel=0
-      self.d47_excel=0
-      self.d48_excel=0
+        self.D47_excel=0
+        self.D48_excel=0
+        self.d45_excel=0
+        self.d46_excel=0
+        self.d47_excel=0
+        self.d48_excel=0
      # self.d46=0           #these are taken care of by the D47_calculation function now
      # self.d45=0
     #    self.D47_raw=0
@@ -65,26 +69,25 @@ class ACQUISITION:
     #    self.d48=0
 
 
-  def __getattr__(self,name):    #the first time this is called, calculates all relevant values, and stores them. So, next time it's not called
-      if name in ['d45','d46','d47','d48','D47_raw','D48_raw', 'd45_stdev',
+    def __getattr__(self,name):    #the first time this is called, calculates all relevant values, and stores them. So, next time it's not called
+        if name in ['d45','d46','d47','d48','D47_raw','D48_raw', 'd45_stdev',
                 'd46_stdev','d47_stdev','d48_stdev','D47_stdev','D47_sterr','D48_stdev', 'd18O_min']:
-          D47_calculation(self)
-          carb_gas_oxygen_fractionation(self)
+            D47_calculation(self)
+            carb_gas_oxygen_fractionation(self)
 
-
-      else:
-        raise AttributeError, name
+        else:
+            raise AttributeError, name
 
 
 
 
 def d13Ccalculator (samGas,refGas,refd13C):
-  '''calculates d13C in VPDB'''
+    '''calculates d13C in VPDB'''
   # ideally, we'll write something that mimics isodat to correct raw ratios
   # to vpdb scale. Isodat is configured to do this using a method called
   # CO2_SSH, though CO2_craig is also an option.
   #For now, let's just take isodat's calculations
-  vpdb=0.011237
+    vpdb=0.011237
 
 def carb_gas_oxygen_fractionation(sample):
     '''calculates the d18O of a carbonate mineral from which the CO2 was digested'''
