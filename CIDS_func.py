@@ -15,8 +15,7 @@ class CI_VALUE(object):
         self.name = name
 
     def __get__(self,instance,cls):
-        print('attempting to access...')
-        if len(instance.voltRef>6):
+        if len(instance.voltRef)>6:
             if self.name in ['d45', 'd46', 'd47', 'd48', 'D47_raw', 'D48_raw']:
                 return D47_calculation_valued(instance, self.name)
 
@@ -25,6 +24,28 @@ class CI_VALUE(object):
 
     def __delete__(self, instance):
         raise AttributeError('Cannot delete CI value')
+
+class CI_AVERAGE(object):
+    '''subclass defining how isotopic ratios are averaged'''
+
+    def __init__(self, name):
+        self.name = name
+
+    def __get__(self,instance,cls):
+        if len(instance.acqs)>=1:
+            if self.name in ['d13C','d13C_stdev','d18O_gas','d18O_min','d18O_stdev',
+            'd47','d47_stdev','D47_raw','D47_stdev', 'D47_sterr','d48','D48_raw','D48_stdev']:
+                return CI_averages_valued(instance, self.name)
+
+        else:
+            raise ValueError('Sample has no acquisitions to average')
+
+
+    def __set__(self, obj, value):
+        raise AttributeError('Cannot change CI averaging scheme')
+
+    def __delete__(self, instance):
+        raise AttributeError('Cannot delete CI average')
 
 
 class CI(object):
@@ -39,18 +60,37 @@ class CI(object):
         self.user=''
         self.skipFirstAcq = False
         self.TCO2 = np.nan
+    #
+    # def __getattr__(self,name):
+    #     if not self.acqs:
+    #         print 'No acquisitions for current sample'
+    #
+    #     elif name in ['d45','d46','d47','d48','D47_raw','D48_raw','d13C','d18O',
+    #     'd45_stdev','d46_stdev','d47_stdev','d48_stdev','D47_stdev','D47_sterr','D48_stdev','d13C_stdev','d18O_stdev','d18O_min']:
+    #         CI_averages(self)
+        #
+        #
+        # else:
+        #   raise AttributeError, name
+    d45 = CI_AVERAGE('d45')
+    d46 = CI_AVERAGE('d46')
+    d47 = CI_AVERAGE('d47')
+    d48 = CI_AVERAGE('d48')
+    D47_raw = CI_AVERAGE('D47_raw')
+    D48_raw = CI_AVERAGE('D48_raw')
+    d13C = CI_AVERAGE('d13C')
+    d18O_gas = CI_AVERAGE('d18O_gas')
+    d18O_min = CI_AVERAGE('d18O_min')
 
-    def __getattr__(self,name):
-        if not self.acqs:
-            print 'No acquisitions for current sample'
-
-        elif name in ['d45','d46','d47','d48','D47_raw','D48_raw','d13C','d18O',
-        'd45_stdev','d46_stdev','d47_stdev','d48_stdev','D47_stdev','D47_sterr','D48_stdev','d13C_stdev','d18O_stdev','d18O_min']:
-            CI_averages(self)
-
-
-        else:
-          raise AttributeError, name
+    d45_stdev = CI_AVERAGE('d45_stdev')
+    d46_stdev = CI_AVERAGE('d46_stdev')
+    d47_stdev = CI_AVERAGE('d47_stdev')
+    d48_stdev = CI_AVERAGE('d48_stdev')
+    D47_stdev = CI_AVERAGE('D47_stdev')
+    D47_sterr = CI_AVERAGE('D47_sterr')
+    D48_stdev = CI_AVERAGE('D48_stdev')
+    d13C_stdev = CI_AVERAGE('d13C_stdev')
+    d18O_stdev = CI_AVERAGE('d18O_stdev')
 
 
 
@@ -78,8 +118,8 @@ class ACQUISITION(object):
         self.d48_excel=0
 
 
-    d46=CI_VALUE('d46')          
-    d45=CI_VALUE('d46')
+    d46=CI_VALUE('d46')
+    d45=CI_VALUE('d45')
     D47_raw=CI_VALUE('D47_raw')
     d47=CI_VALUE('d47')
     D48_raw=CI_VALUE('D48_raw')
@@ -437,7 +477,7 @@ def D47_calculations(samples):
     #   samples[i].acqs[j]=D47_calculation(samples[i].acqs[j])
       samples[i].acqs[j]=carb_gas_oxygen_fractionation(samples[i].acqs[j])
 
-    CI_averages(samples[i])
+    # CI_averages(samples[i])
 
   return samples
 
@@ -466,7 +506,7 @@ def CI_averages(sample):
     if len(values) != 0:
         values = np.asarray(values)
         (sample.d45, sample.d46, sample.d47, sample.d48, sample.D47_raw, sample.D48_raw,
-        sample.d13C, sample.d18O, sample.d18O_min) = values.mean(axis=0)
+        sample.d13C, sample.d18O_gas, sample.d18O_min) = values.mean(axis=0)
 
         # (sample.d45, sample.d46, sample.d47, sample.d48, sample.D47_raw, sample.D48_raw,
         # sample.d13C, sample.d18O) = values.mean(axis=0)
@@ -484,7 +524,7 @@ def FlatList_exporter(samples,fileName):
     wrt.writerow(['User','date','Type','Sample ID','spec #\'s', 'd13C (vpdb)','d13C_stdev','d18O_gas (vsmow)','d18O_mineral (vpdb)',
     'd18O_stdev','d47','d47_stdev','D47 (v. Oz)','D47_stdev','D47_sterr','d48', 'd48_stdev','D48','D48_stdev'])
     for item in samples:
-        wrt.writerow([item.user, item.date, item.type, item.name, item.num, item.d13C, item.d13C_stdev, item.d18O, item.d18O_min,
+        wrt.writerow([item.user, item.date, item.type, item.name, item.num, item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
         item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev ])
     export.close()
     return
@@ -638,3 +678,42 @@ def D47_calculation_valued(acq, objName):
     calculatedCIValues = {'d45': d45, 'd46': d46, 'd47': d47, 'd48': d48, 'D47_raw': D47_raw, 'D48_raw': D48_raw}
 
     return calculatedCIValues[objName]
+
+def CI_averages_valued(sample, objName):
+    '''Computes the mean, std dev, and std error for every attribute useful for a CI measurement'''
+
+    props2=['d13C','d13C_stdev','d18O_gas','d18O_min','d18O_stdev',
+        'd47','d47_stdev','D47_raw','D47_stdev', 'D47_sterr','d48','D48_raw','D48_stdev']
+
+    acqsToUse = range(len(sample.acqs))
+
+    if sample.skipFirstAcq:
+        del acqsToUse[0]
+
+    values=[]#preallocating for value storage
+
+    for i in acqsToUse:
+        values.append([sample.acqs[i].d45,sample.acqs[i].d46,sample.acqs[i].d47,
+        sample.acqs[i].d48, sample.acqs[i].D47_raw,sample.acqs[i].D48_raw,
+        sample.acqs[i].d13C_sample,sample.acqs[i].d18O_sample, sample.acqs[i].d18O_min])
+        # values[i,:]=[sample.acqs[i].d45,sample.acqs[i].d46,sample.acqs[i].d47,
+        # sample.acqs[i].d48, samle.acqs[i].D47_raw,sample.acqs[i].D48_raw,sample.acqs[i].d13C_sample,sample.acqs[i].d18O_sample]
+
+    if len(values) != 0:
+        values = np.asarray(values)
+        (d45, d46, d47, d48, D47_raw, D48_raw,
+        d13C, d18O_gas, d18O_min) = values.mean(axis=0)
+
+        (d45_stdev, d46_stdev, d47_stdev, d48_stdev, D47_stdev,
+        D48_stdev, d13C_stdev, d18O_stdev, temp) = values.std(axis=0,ddof=1)
+
+        D47_sterr=D47_stdev/np.sqrt(values.shape[0])
+
+        calculatedCIAverages = calculatedCIValues = {'d45': d45, 'd46': d46,
+        'd47': d47, 'd48': d48, 'D47_raw': D47_raw, 'D48_raw': D48_raw,
+        'd45_stdev': d45_stdev, 'd46_stdev': d46_stdev, 'd47_stdev': d47_stdev,
+        'd48_stdev': d48_stdev, 'D47_stdev': D47_stdev, 'D48_stdev': D48_stdev,
+        'd13C': d13C, 'd18O_gas': d18O_gas, 'd18O_min': d18O_min,
+        'd13C_stdev': d13C_stdev, 'd18O_stdev': d18O_stdev, 'D47_sterr': D47_sterr}
+
+        return calculatedCIAverages[objName]
