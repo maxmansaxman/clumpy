@@ -34,8 +34,8 @@ class CI_AVERAGE(object):
     def __get__(self,instance,cls):
         if len(instance.acqs)>=1:
             if self.name in ['d13C','d13C_stdev','d18O_gas','d18O_min','d18O_stdev',
-            'd47','d47_stdev','D47_raw','D47_stdev', 'D47_sterr','d48','D48_raw','D48_stdev']:
-                return CI_averages_valued(instance, self.name)
+            'd47','d47_stdev','D47_raw','D47_stdev', 'D47_sterr','d48','d48_stdev','D48_raw','D48_stdev']:
+                return CI_averages_valued_individual(instance, self.name)
 
         else:
             raise ValueError('Sample has no acquisitions to average')
@@ -103,8 +103,8 @@ class ACQUISITION(object):
         self.voltSam=[]
         self.voltRef=[]
         self.background=[]
-        self.d13C_sample = 0
-        self.d18O_sample = 0
+        self.d13C = 0
+        self.d18O_gas = 0
         self.d13Cref = 0
         self.d18Oref = 0
         self.date=''
@@ -153,7 +153,7 @@ def carb_gas_oxygen_fractionation(sample):
 
     vsmow_18O=0.0020052
     vpdb_18O = 0 #don't know this right now
-    d18O_vpdb = (sample.d18O_sample-30.86)/1.03086
+    d18O_vpdb = (sample.d18O_gas-30.86)/1.03086
     sample.d18O_min = ((d18O_vpdb+1000)/1.00821)-1000
     return sample
 
@@ -332,11 +332,11 @@ def CIDS_parser(filePath):
         samples[-1].type=line[line.index('Type')+1].lower()
 
       elif 'Sample d13C (VPDB)' in line[0:10]:
-        samples[-1].acqs[-1].d13C_sample=float(line[line.index('Sample d13C (VPDB)')+1])
+        samples[-1].acqs[-1].d13C=float(line[line.index('Sample d13C (VPDB)')+1])
         samples[-1].acqs[-1].d46_excel=float(line[line.index('d46')+1])
 
       elif 'Sample d18O (SMOW)' in line[0:10]:
-        samples[-1].acqs[-1].d18O_sample=float(line[line.index('Sample d18O (SMOW)')+1])
+        samples[-1].acqs[-1].d18O_gas=float(line[line.index('Sample d18O (SMOW)')+1])
         samples[-1].acqs[-1].d47_excel=float(line[line.index('d47')+1])
 
       elif 'Ref Gas d13C (VPDB)' in line[0:10]:
@@ -386,7 +386,7 @@ def CIDS_cleaner(samples):
                 samples[i].acqs[j].voltRef=np.around(np.asarray(samples[i].acqs[j].voltRef),3)
                 samples[i].acqs[j].background=np.asarray(samples[i].acqs[j].background)
                 # rouding d13C and d18O of each acq to 3 sig figs to match CIDS sheet
-                (samples[i].acqs[j].d13C_sample,samples[i].acqs[j].d18O_sample) = np.around((samples[i].acqs[j].d13C_sample,samples[i].acqs[j].d18O_sample),3)
+                (samples[i].acqs[j].d13Cample,samples[i].acqs[j].d18O_gas) = np.around((samples[i].acqs[j].d13C,samples[i].acqs[j].d18O_gas),3)
 
 
     print 'All samples are cleaned, and voltages converted to arrays'
@@ -411,8 +411,8 @@ def D47_calculation(acq):
     lambda_17=0.5164
 
     k=acq
-    R13_sa=(k.d13C_sample/1000+1)*vpdb_13C
-    R18_sa=(k.d18O_sample/1000+1)*vsmow_18O
+    R13_sa=(k.d13C/1000+1)*vpdb_13C
+    R18_sa=(k.d18O_gas/1000+1)*vsmow_18O
     R17_sa=np.power((R18_sa/vsmow_18O),lambda_17)*vsmow_17O
 
     R13_ref=(k.d13Cref/1000+1)*vpdb_13C
@@ -473,6 +473,7 @@ def D47_calculations(samples):
 
 
   for i in range(len(samples)):
+
     for j in range(len(samples[i].acqs)):
     #   samples[i].acqs[j]=D47_calculation(samples[i].acqs[j])
       samples[i].acqs[j]=carb_gas_oxygen_fractionation(samples[i].acqs[j])
@@ -499,9 +500,9 @@ def CI_averages(sample):
 
     for i in acqsToUse:
         values.append([sample.acqs[i].d45,sample.acqs[i].d46,sample.acqs[i].d47,
-        sample.acqs[i].d48, sample.acqs[i].D47_raw,sample.acqs[i].D48_raw,sample.acqs[i].d13C_sample,sample.acqs[i].d18O_sample, sample.acqs[i].d18O_min])
+        sample.acqs[i].d48, sample.acqs[i].D47_raw,sample.acqs[i].D48_raw,sample.acqs[i].d13C,sample.acqs[i].d18O_gas, sample.acqs[i].d18O_min])
         # values[i,:]=[sample.acqs[i].d45,sample.acqs[i].d46,sample.acqs[i].d47,
-        # sample.acqs[i].d48, samle.acqs[i].D47_raw,sample.acqs[i].D48_raw,sample.acqs[i].d13C_sample,sample.acqs[i].d18O_sample]
+        # sample.acqs[i].d48, samle.acqs[i].D47_raw,sample.acqs[i].D48_raw,sample.acqs[i].d13C,sample.acqs[i].d18O_gas]
 
     if len(values) != 0:
         values = np.asarray(values)
@@ -516,16 +517,25 @@ def CI_averages(sample):
 
         sample.D47_sterr=sample.D47_stdev/np.sqrt(values.shape[0])
 
-def FlatList_exporter(samples,fileName):
+def FlatList_exporter(samples,fileName, displayProgress = True):
     '''Exports a CSV file that is the same format as a traditional flat list'''
 
     export=open(fileName + '.csv','wb')
     wrt=csv.writer(export,dialect='excel')
     wrt.writerow(['User','date','Type','Sample ID','spec #\'s', 'd13C (vpdb)','d13C_stdev','d18O_gas (vsmow)','d18O_mineral (vpdb)',
     'd18O_stdev','d47','d47_stdev','D47 (v. Oz)','D47_stdev','D47_sterr','d48', 'd48_stdev','D48','D48_stdev'])
-    for item in samples:
-        wrt.writerow([item.user, item.date, item.type, item.name, item.num, item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
-        item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev ])
+    counter = 0
+    if displayProgress:
+        for item in samples:
+            wrt.writerow([item.user, item.date, item.type, item.name, item.num, item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
+            item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev ])
+            counter += 1
+            if ((counter * 100)*100) % (len(samples)*100) == 0:
+                print(str((counter*100)/len(samples)) + '% done')
+    else:
+        for item in samples:
+            wrt.writerow([item.user, item.date, item.type, item.name, item.num, item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
+            item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev ])
     export.close()
     return
 
@@ -624,8 +634,8 @@ def D47_calculation_valued(acq, objName):
     vsmow_17O=0.0003799
     lambda_17=0.5164
 
-    R13_sa=(acq.d13C_sample/1000+1)*vpdb_13C
-    R18_sa=(acq.d18O_sample/1000+1)*vsmow_18O
+    R13_sa=(acq.d13C/1000+1)*vpdb_13C
+    R18_sa=(acq.d18O_gas/1000+1)*vsmow_18O
     R17_sa=np.power((R18_sa/vsmow_18O),lambda_17)*vsmow_17O
 
     R13_ref=(acq.d13Cref/1000+1)*vpdb_13C
@@ -683,7 +693,7 @@ def CI_averages_valued(sample, objName):
     '''Computes the mean, std dev, and std error for every attribute useful for a CI measurement'''
 
     props2=['d13C','d13C_stdev','d18O_gas','d18O_min','d18O_stdev',
-        'd47','d47_stdev','D47_raw','D47_stdev', 'D47_sterr','d48','D48_raw','D48_stdev']
+        'd47','d47_stdev','D47_raw','D47_stdev', 'D47_sterr','d48', 'd48_stdev','D48_raw','D48_stdev']
 
     acqsToUse = range(len(sample.acqs))
 
@@ -695,9 +705,9 @@ def CI_averages_valued(sample, objName):
     for i in acqsToUse:
         values.append([sample.acqs[i].d45,sample.acqs[i].d46,sample.acqs[i].d47,
         sample.acqs[i].d48, sample.acqs[i].D47_raw,sample.acqs[i].D48_raw,
-        sample.acqs[i].d13C_sample,sample.acqs[i].d18O_sample, sample.acqs[i].d18O_min])
+        sample.acqs[i].d13C,sample.acqs[i].d18O_gas, sample.acqs[i].d18O_min])
         # values[i,:]=[sample.acqs[i].d45,sample.acqs[i].d46,sample.acqs[i].d47,
-        # sample.acqs[i].d48, samle.acqs[i].D47_raw,sample.acqs[i].D48_raw,sample.acqs[i].d13C_sample,sample.acqs[i].d18O_sample]
+        # sample.acqs[i].d48, samle.acqs[i].D47_raw,sample.acqs[i].D48_raw,sample.acqs[i].d13C,sample.acqs[i].d18O_gas]
 
     if len(values) != 0:
         values = np.asarray(values)
@@ -717,3 +727,42 @@ def CI_averages_valued(sample, objName):
         'd13C_stdev': d13C_stdev, 'd18O_stdev': d18O_stdev, 'D47_sterr': D47_sterr}
 
         return calculatedCIAverages[objName]
+
+def CI_averages_valued_individual(sample, objName):
+    '''Computes the mean, std dev, and std error for every attribute useful for a CI measurement'''
+
+    props2=['d13C','d13C_stdev','d18O_gas','d18O_min','d18O_stdev',
+        'd47','d47_stdev','D47_raw','D47_stdev', 'D47_sterr','d48','D48_raw','D48_stdev']
+
+    valName = objName.replace('_stdev','')
+
+    valName = valName.replace('_sterr','')
+
+    if valName in ['D47', 'D48']:
+        valName += '_raw'
+    elif valName in ['d18O']:
+        valName += '_gas'
+
+    acqsToUse = range(len(sample.acqs))
+
+    if sample.skipFirstAcq:
+        del acqsToUse[0]
+
+    values=[]#preallocating for value storage
+
+    for i in acqsToUse:
+        values.append(getattr(sample.acqs[i],valName))
+        # values.append([sample.acqs[i].d45,sample.acqs[i].d46,sample.acqs[i].d47,
+        # sample.acqs[i].d48, sample.acqs[i].D47_raw,sample.acqs[i].D48_raw,
+        # sample.acqs[i].d13C,sample.acqs[i].d18O_gas, sample.acqs[i].d18O_min])
+        # values[i,:]=[sample.acqs[i].d45,sample.acqs[i].d46,sample.acqs[i].d47,
+        # sample.acqs[i].d48, samle.acqs[i].D47_raw,sample.acqs[i].D48_raw,sample.acqs[i].d13C,sample.acqs[i].d18O_gas]
+
+    if len(values) != 0:
+        values = np.asarray(values)
+        if '_stdev' in objName:
+            return values.std(axis=0,ddof=1)
+        elif '_sterr' in objName:
+            return values.std(axis=0,ddof=1)/np.sqrt(values.shape[0])
+        else:
+            return values.mean(axis=0)
