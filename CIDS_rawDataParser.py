@@ -135,7 +135,7 @@ while True:
                 #         analyses[-1].name = rawSampleName
 
                 # Catching case where evaluated d18O does not match, indicating a clearly different sample
-                elif len(analyses[-1].acqs) > 0:
+                if len(analyses[-1].acqs) > 0:
                     if abs((d18O - analyses[-1].acqs[-1].d18O_gas)/analyses[-1].acqs[-1].d18O_gas) > 0.1:
                         #print('This acquisition composition: \n d13C = ' + str(d13C) + ', d18O = ' + str(d18O))
                         print('This acquisition: \n name = {0}, d13C = {1:.3f}, d18O = {2:.3f}'.format(rawSampleName, d13C, d18O))
@@ -154,7 +154,7 @@ while True:
                             print('Including acquisition ')
 
                 # Catching case where name in file does not match current acq name
-                elif analyses[-1].name != rawSampleName :
+                if analyses[-1].name != rawSampleName :
                     print('Sample name: ' + analyses[-1].name + ' does not match name in file: ' + rawSampleName + ' ')
                     nameErrorChoice = raw_input('(s)kip acquisition, (i)nclude it, or make a (n)ew sample from it? ')
                     if nameErrorChoice.lower() == 's':
