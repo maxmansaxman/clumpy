@@ -490,7 +490,7 @@ def D47_calculations(samples):
 
     for j in range(len(samples[i].acqs)):
     #   samples[i].acqs[j]=D47_calculation(samples[i].acqs[j])
-      samples[i].acqs[j]=carb_gas_oxygen_fractionation(samples[i].acqs[j])
+      samples[i].acqs[j]=carb_gas_oxygen_fractionation_acq(samples[i].acqs[j])
 
     # CI_averages(samples[i])
 
@@ -558,7 +558,7 @@ def CIDS_exporter(samples, fileName, displayProgress = False):
     Python CIDS files are also importable, to load all important sample info
     back into the program'''
 
-    export=open(fileName + '_python_CIDS.csv','wb')
+    export=open(fileName + '.csv','wb')
     wrt=csv.writer(export,dialect='excel')
     for sample in samples:
         wrt.writerow(['__NewSample__'])
@@ -583,7 +583,7 @@ def CIDS_exporter(samples, fileName, displayProgress = False):
         wrt.writerow(['__SampleSummary__',sample.user, sample.date, sample.type, sample.name, sample.num, sample.skipFirstAcq, sample.d13C, sample.d13C_stdev,
         sample.d18O_gas, sample.d18O_min, sample.d18O_stdev, sample.d47, sample.d47_stdev, sample.D47_raw,
         sample.D47_stdev, sample.D47_sterr, sample.d48, sample.d48_stdev, sample.D48_raw, sample.D48_stdev])
-        wrt.writerow(22*['---',])
+        wrt.writerow(24*['---',])
 
     export.close()
     return
