@@ -9,7 +9,7 @@ import os
 import struct
 
 class CI_VALUE(object):
-    '''subclass defining how important isotopic ratios are calculated'''
+    '''subclass defining how important isotopic ratios are calculated, and d18O_mineral'''
 
     def __init__(self, name):
         self.name = name
@@ -17,7 +17,9 @@ class CI_VALUE(object):
     def __get__(self,instance,cls):
         if len(instance.voltRef)>6:
             if self.name in ['d45', 'd46', 'd47', 'd48', 'D47_raw', 'D48_raw']:
-                return D47_calculation_valued(instance, self.name)
+                return np.around(D47_calculation_valued(instance, self.name),3)
+            elif self.name in ['d18O_min']:
+                return carb_gas_oxygen_fractionation_acq(instance)
 
     def __set__(self, obj, value):
         raise AttributeError('Cannot change CI calculation scheme')
@@ -35,7 +37,7 @@ class CI_AVERAGE(object):
         if len(instance.acqs)>=1:
             if self.name in ['d13C','d13C_stdev','d18O_gas','d18O_min','d18O_stdev',
             'd47','d47_stdev','D47_raw','D47_stdev', 'D47_sterr','d48','d48_stdev','D48_raw','D48_stdev']:
-                return CI_averages_valued_individual(instance, self.name)
+                return np.around(CI_averages_valued_individual(instance, self.name),3)
 
         else:
             raise ValueError('Sample has no acquisitions to average')
@@ -124,6 +126,7 @@ class ACQUISITION(object):
     d47=CI_VALUE('d47')
     D48_raw=CI_VALUE('D48_raw')
     d48=CI_VALUE('d48')
+    d18O_min = CI_VALUE('d18O_min')
 
 
     # def __getattr__(self,name):    #the first time this is called, calculates all relevant values, and stores them. So, next time it's not called
@@ -156,6 +159,17 @@ def carb_gas_oxygen_fractionation(sample):
     d18O_vpdb = (sample.d18O_gas-30.86)/1.03086
     sample.d18O_min = ((d18O_vpdb+1000)/1.00821)-1000
     return sample
+
+def carb_gas_oxygen_fractionation_acq(acq):
+    '''calculates the d18O of a carbonate mineral from which the CO2 was digested'''
+    # Done properly, this should be a function of the d18O of the gas, the reaction T,
+    # and the cabonate phase of the sample, but we're sticking to 90C calcite for now'''
+
+    vsmow_18O=0.0020052
+    vpdb_18O = 0 #don't know this right now
+    d18O_vpdb = (acq.d18O_gas-30.86)/1.03086
+    d18O_min = ((d18O_vpdb+1000)/1.00821)-1000
+    return d18O_min
 
 
 def Isodat_File_Parser(fileName):
@@ -385,8 +399,8 @@ def CIDS_cleaner(samples):
                 samples[i].acqs[j].voltSam=np.around(np.asarray(samples[i].acqs[j].voltSam),3)
                 samples[i].acqs[j].voltRef=np.around(np.asarray(samples[i].acqs[j].voltRef),3)
                 samples[i].acqs[j].background=np.asarray(samples[i].acqs[j].background)
-                # rouding d13C and d18O of each acq to 3 sig figs to match CIDS sheet
-                (samples[i].acqs[j].d13Cample,samples[i].acqs[j].d18O_gas) = np.around((samples[i].acqs[j].d13C,samples[i].acqs[j].d18O_gas),3)
+                # rounding d13C and d18O of each acq to 3 sig figs to match CIDS sheet
+                (samples[i].acqs[j].d13C,samples[i].acqs[j].d18O_gas) = np.around((samples[i].acqs[j].d13C,samples[i].acqs[j].d18O_gas),3)
 
 
     print 'All samples are cleaned, and voltages converted to arrays'
@@ -476,7 +490,7 @@ def D47_calculations(samples):
 
     for j in range(len(samples[i].acqs)):
     #   samples[i].acqs[j]=D47_calculation(samples[i].acqs[j])
-      samples[i].acqs[j]=carb_gas_oxygen_fractionation(samples[i].acqs[j])
+      samples[i].acqs[j]=carb_gas_oxygen_fractionation_acq(samples[i].acqs[j])
 
     # CI_averages(samples[i])
 
@@ -517,7 +531,7 @@ def CI_averages(sample):
 
         sample.D47_sterr=sample.D47_stdev/np.sqrt(values.shape[0])
 
-def FlatList_exporter(samples,fileName, displayProgress = True):
+def FlatList_exporter(samples,fileName, displayProgress = False):
     '''Exports a CSV file that is the same format as a traditional flat list'''
 
     export=open(fileName + '.csv','wb')
@@ -538,6 +552,91 @@ def FlatList_exporter(samples,fileName, displayProgress = True):
             item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev ])
     export.close()
     return
+
+def CIDS_exporter(samples, fileName, displayProgress = False):
+    '''Exports a CSV file that is the same format as a traditional CIDS file.
+    Python CIDS files are also importable, to load all important sample info
+    back into the program'''
+
+    export=open(fileName + '.csv','wb')
+    wrt=csv.writer(export,dialect='excel')
+    for sample in samples:
+        wrt.writerow(['__NewSample__'])
+        for acq in sample.acqs:
+            wrt.writerow(['__NewAcq__'])
+            wrt.writerow(['__AcqVoltage__','',]+np.shape(acq.voltSam)[1]*['',]+acq.voltRef[0,:].tolist())
+            for i in range(len(acq.voltSam)):
+                wrt.writerow(['',''] + acq.voltSam[i,:].tolist() + acq.voltRef[i+1,:].tolist())
+            wrt.writerow([])
+            wrt.writerow(['','acq num','ref gas d13C','ref gas d18O','name','type','d13C (vpdb)',
+            'd18O_gas (vsmow)', 'd45','d46','d47', 'd48', 'D47_raw', 'D48_raw'])
+            wrt.writerow(['__AcqInfo__',acq.acqNum, acq.d13Cref, acq.d18Oref, sample.name, sample.type, acq.d13C,
+            acq.d18O_gas, acq.d45, acq.d46, acq.d47, acq.d48, acq.D47_raw, acq.D48_raw])
+
+        wrt.writerow([])
+        wrt.writerow(['', 'd45','d46','d47','d48','D47_raw','D48_raw','d13C','d18O_gas'])
+        for acq in sample.acqs:
+            wrt.writerow(['',acq.d45, acq.d46, acq.d47, acq.d48, acq.D47_raw, acq.D48_raw, acq.d13C, acq.d18O_gas])
+        wrt.writerow([])
+        wrt.writerow(['','User','date','Type','Sample ID','spec #\'s','SkipFirstAcq','d13C (vpdb)','d13C_stdev','d18O_gas (vsmow)','d18O_mineral (vpdb)',
+        'd18O_stdev','d47','d47_stdev','D47 (v. Oz)','D47_stdev','D47_sterr','d48', 'd48_stdev','D48','D48_stdev'])
+        wrt.writerow(['__SampleSummary__',sample.user, sample.date, sample.type, sample.name, sample.num, sample.skipFirstAcq, sample.d13C, sample.d13C_stdev,
+        sample.d18O_gas, sample.d18O_min, sample.d18O_stdev, sample.d47, sample.d47_stdev, sample.D47_raw,
+        sample.D47_stdev, sample.D47_sterr, sample.d48, sample.d48_stdev, sample.D48_raw, sample.D48_stdev])
+        wrt.writerow(24*['---',])
+
+    export.close()
+    return
+
+def CIDS_importer(filePath, displayProgress = False):
+    '''Imports voltage and sample data that were exported using the CIDS_exporter function'''
+    fileImport = open(filePath,'rU')
+    fileReader = csv.reader(fileImport, dialect='excel')
+    samples = []
+
+    cycles_in_acqs = 7
+
+    for line in fileReader:
+        if '__NewSample__' in line:
+            samples.append(CI())
+            continue
+        if '__NewAcq__' in line:
+            samples[-1].acqs.append(ACQUISITION(0))
+            continue
+        if '__AcqVoltage__' in line:
+            voltIndex = line.index('__AcqVoltage__')
+            cycle = 0
+            voltRefs = [float(vr) for vr in line[voltIndex+8:voltIndex+14]]
+            samples[-1].acqs[-1].voltRef.append(voltRefs)
+            continue
+        if cycle < (cycles_in_acqs):
+            voltSams=[float(vs) for vs in line[voltIndex+2:voltIndex+8]]
+            voltRefs = [float(vr) for vr in line[voltIndex+8:voltIndex+14]]
+            samples[-1].acqs[-1].voltSam.append(voltSams)
+            samples[-1].acqs[-1].voltRef.append(voltRefs)
+            cycle += 1
+            continue
+        if '__AcqInfo__' in line:
+            acqIndex = line.index('__AcqInfo__')
+            samples[-1].acqs[-1].acqNum = float(line[acqIndex + 1])
+            samples[-1].acqs[-1].d13Cref = float(line[acqIndex + 2])
+            samples[-1].acqs[-1].d18Oref = float(line[acqIndex + 3])
+            samples[-1].acqs[-1].d13C = float(line[acqIndex + 6])
+            samples[-1].acqs[-1].d18O_gas = float(line[acqIndex + 7])
+            samples[-1].acqs[-1].voltRef = np.asarray(samples[-1].acqs[-1].voltRef)
+            samples[-1].acqs[-1].voltSam = np.asarray(samples[-1].acqs[-1].voltSam)
+            continue
+        if '__SampleSummary__' in line:
+            summaryIndex = line.index('__SampleSummary__')
+            [samples[-1].user, samples[-1].date, samples[-1].type, samples[-1].name] = line[summaryIndex + 1:summaryIndex+5]
+            samples[-1].num = int(line[summaryIndex + 5])
+            samples[-1].skipFirstAcq = bool(line[summaryIndex + 6])
+
+    fileImport.close()
+    return samples
+
+
+
 
 def Get_gases(samples):
     '''Finds which analyses are heated and equilibrated gases, and assigns them TCO2 values'''
@@ -766,3 +865,22 @@ def CI_averages_valued_individual(sample, objName):
             return values.std(axis=0,ddof=1)/np.sqrt(values.shape[0])
         else:
             return values.mean(axis=0)
+
+def CI_comparer(samples1, samples2):
+    '''compares two sets of CI data for equivalence in D47 calculations'''
+    equalSoFar = True
+    if not len(samples1) == len(samples2):
+        print('Data sets are not the same length!')
+
+    for i in range(len(samples1)):
+        for j in range(len(samples1[i].acqs)):
+            if not samples1[i].acqs[j].D47_raw == samples2[i].acqs[j].D47_raw:
+                print('Acq num {1} from sample number {0} from comparison does not agree in D47'.format(i,j))
+                print('analyses1 D47 = {0:.3f}, analyses2 D47 = {1:.3f}'.format(samples1[i].acqs[j].D47_raw, samples2[i].acqs[j].D47_raw))
+                equalSoFar = False
+        if not samples1[i].D47_stdev == samples2[i].D47_stdev:
+            print('Sample number {0} from data sets do not agree in D47_stdev'.format(i))
+            print('1. D47_stdev = {0:.3f}, 2. D47_stdev = {0:.3f}'.format(samples1[i].D47_stdev, samples2[i].D48_stdev))
+
+    if equalSoFar:
+        print('Data sets are equivalent')
