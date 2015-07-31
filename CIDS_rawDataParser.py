@@ -53,8 +53,8 @@ if modeChoice == 'm':
                 analyses[-1].acqs.append(CIDS_func.ACQUISITION(acqNum))
                 analyses[-1].acqs[-1].voltRef = voltRef
                 analyses[-1].acqs[-1].voltSam = voltSam
-                analyses[-1].acqs[-1].d13C_sample = d13C
-                analyses[-1].acqs[-1].d18O_sample = d18O
+                analyses[-1].acqs[-1].d13C = d13C
+                analyses[-1].acqs[-1].d18O_gas = d18O
                 analyses[-1].acqs[-1].d13Cref = d13C_ref
                 analyses[-1].acqs[-1].d18Oref = d18O_ref
 
@@ -137,11 +137,11 @@ elif modeChoice == 'a':
 
         # Catching case where evaluated d18O does not match, indicating a clearly different sample
         elif len(analyses[-1].acqs) > 0:
-            if abs((d18O - analyses[-1].acqs[-1].d18O_sample)/analyses[-1].acqs[-1].d18O_sample) > 0.1:
+            if abs((d18O - analyses[-1].acqs[-1].d18O_gas)/analyses[-1].acqs[-1].d18O_gas) > 0.1:
                 #print('This acquisition composition: \n d13C = ' + str(d13C) + ', d18O = ' + str(d18O))
                 print('This acquisition: \n name = {0}, d13C = {1:.3f}, d18O = {2:.3f}'.format(rawSampleName, d13C, d18O))
-                print('is significantly different than the last one: \n name = {0}, d13C = {1:.3f}, d18O = {2:.3f}'.format(analyses[-1].name, analyses[-1].acqs[-1].d13C_sample, analyses[-1].acqs[-1].d18O_sample))
-                # print('is significantly different than the last for this sample: \n d13C = ' + str(analyses[-1].acqs[-1].d13C_sample) + ', d18O = ' + str(analyses[-1].acqs[-1].d18O_sample))
+                print('is significantly different than the last one: \n name = {0}, d13C = {1:.3f}, d18O = {2:.3f}'.format(analyses[-1].name, analyses[-1].acqs[-1].d13C, analyses[-1].acqs[-1].d18O_gas))
+                # print('is significantly different than the last for this sample: \n d13C = ' + str(analyses[-1].acqs[-1].d13C) + ', d18O = ' + str(analyses[-1].acqs[-1].d18O_gas))
                 oxygen18ErrorChoice = raw_input('(s)kip acquisition, (i)nclude it, or make a (n)ew sample from it? ')
                 if oxygen18ErrorChoice.lower() == 's':
                     print('Skipping acquisition ')
@@ -175,8 +175,8 @@ elif modeChoice == 'a':
         analyses[-1].acqs.append(CIDS_func.ACQUISITION(acqNum))
         analyses[-1].acqs[-1].voltRef = voltRef
         analyses[-1].acqs[-1].voltSam = voltSam
-        analyses[-1].acqs[-1].d13C_sample = d13C
-        analyses[-1].acqs[-1].d18O_sample = d18O
+        analyses[-1].acqs[-1].d13C = d13C
+        analyses[-1].acqs[-1].d18O_gas = d18O
         analyses[-1].acqs[-1].d13Cref = d13C_ref
         analyses[-1].acqs[-1].d18Oref = d18O_ref
         print('Acquisition '+str(acqNum)+ ' successfully imported.')
