@@ -193,6 +193,15 @@ while True:
                     analyses[i].skipFirstAcq = True
             print('Cleaning up analyses...')
             analyses=CIDS_func.CIDS_cleaner(analyses)
+            print('Checking analyses types...')
+            while not CIDS_func.Sample_type_checker(analyses):
+                print('Some analyses types need to be assigned ')
+                typeGetterMode = raw_input('Get analyses types (a)utomatically or (m)anually? ').lower()
+                if typeGetterMode == 'm':
+                    analyses = CIDS_func.Get_types_manual(analyses)
+                else:
+                    analyses = CIDS_func.Get_types_auto(analyses)
+
             exportNowChoice = raw_input('Export analyses now (y/n)? ').lower()
             if exportNowChoice == 'y':
                 print('Exporting full acqs to a CIDS sheet...')
@@ -230,6 +239,13 @@ while True:
             print('Nothing to export!')
             break
         else:
+            while not CIDS_func.Sample_type_checker(analyses):
+                print('Some analyses types need to be assigned ')
+                typeGetterMode = raw_input('Get analyses types (a)utomatically or (m)anually? ').lower()
+                if typeGetterMode == 'm':
+                    analyses = CIDS_func.Get_types_manual(analyses)
+                else:
+                    analyses = CIDS_func.Get_types_auto(analyses)
             print('Exporting to temporary CIDS and FlatList files ')
             print('Exporting full acqs to a CIDS sheet...')
             exportNameCIDS = 'autoCIDS_Export'
