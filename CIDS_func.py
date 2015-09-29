@@ -536,19 +536,19 @@ def FlatList_exporter(samples,fileName, displayProgress = False):
 
     export=open(fileName + '.csv','wb')
     wrt=csv.writer(export,dialect='excel')
-    wrt.writerow(['User','date','Type','Sample ID','spec #\'s', 'd13C (vpdb)','d13C_stdev','d18O_gas (vsmow)','d18O_mineral (vpdb)',
+    wrt.writerow(['User','date','Type','Sample ID','spec #\'s', 'acqs', 'd13C (vpdb)','d13C_stdev','d18O_gas (vsmow)','d18O_mineral (vpdb)',
     'd18O_stdev','d47','d47_stdev','D47 (v. Oz)','D47_stdev','D47_sterr','d48', 'd48_stdev','D48','D48_stdev'])
     counter = 0
     if displayProgress:
         for item in samples:
-            wrt.writerow([item.user, item.date, item.type, item.name, item.num, item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
+            wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
             item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev ])
             counter += 1
             if ((counter * 100)*100) % (len(samples)*100) == 0:
                 print(str((counter*100)/len(samples)) + '% done')
     else:
         for item in samples:
-            wrt.writerow([item.user, item.date, item.type, item.name, item.num, item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
+            wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
             item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev ])
     export.close()
     return
@@ -884,3 +884,74 @@ def CI_comparer(samples1, samples2):
 
     if equalSoFar:
         print('Data sets are equivalent')
+
+def Sample_type_checker(samples):
+    AllSamplesHaveType = True
+    for i in range(len(samples)):
+        if samples[i].type not in ['std','sample','eg','hg']:
+            AllSamplesHaveType = False
+            break
+
+    return AllSamplesHaveType
+
+def Get_types_auto(samples):
+    '''Function to assign the correct type to every analysis automatically, given a few assumptions:
+    stds are Carrara, NBS-19, or TV03, all gases have 'BOC' in name, and all egs have '25' in name)'''
+
+    print('Automatically assigning analyses types ')
+    choice = raw_input('(s)top process, see (n)aming guidelines, or hit any other key to continue ').lower()
+    if choice == 's':
+        return(samples)
+    elif choice == 'n':
+        print('1. Standards must contain words "carrara", "TV03", or "NBS-19" ')
+        print('2. 25 C equilibrated gases must contain "BOC" AND "25" ')
+        print('3. 1000 C heated gases must contain "BOC" AND NOT "25" AND < 10 chars ')
+        print('4. Analyses that already have a valid type are not modified ')
+        return(samples)
+    else:
+        for i in range(len(samples)):
+            if samples[i].type in ['std', 'eg', 'hg', 'sample']:
+                continue
+            else:
+                name = samples[i].name.lower()
+                if ('carrara' in name) or ('tv03' in name) or ('nbs-19' in name):
+                    samples[i].type = 'std';
+                    continue
+                elif ('boc' in name):
+                    if ('25' in name):
+                        samples[i].type = 'eg'
+                        continue
+                    elif (len(name) < 10):
+                        samples[i].type = 'hg'
+                        continue
+                else:
+                    samples[i].type = 'sample'
+    if Sample_type_checker(samples):
+        print('Types successfully assigned ')
+    else:
+        print('Automatic assignment failed ')
+
+    return(samples)
+
+def Get_types_manual(samples):
+    '''Function to assign the correct type to every analysis manually'''
+
+    print('Manually assigning analyses types ')
+    for i in range(len(samples)):
+        if samples[i].type not in ['eg', 'hg', 'sample', 'std']:
+            typeChoice = raw_input('Type for: ' + samples[i].name + ' -> (e)g, (h)g, (s)ample, or s(t)d?').lower()
+            if typeChoice == 'e':
+                samples[i].type = 'eg'
+            elif typeChoice == 'h':
+                samples[i].type = 'hg'
+            elif typeChoice == 't':
+                samples[i].type = 'std'
+            else:
+                samples[i].type = 'samples'
+
+    if Sample_type_checker(samples):
+        print('Types successfully assigned ')
+    else:
+        print('Assignment of some types failed ')
+
+    return(samples)
