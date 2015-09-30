@@ -107,7 +107,7 @@ while True:
                 acqNum=int(acqNum)
                 # Actually processing the file
                 print('Importing acq num ' + str(acqNum) + ' ')
-                voltRef,voltSam,d13C,d18O,d13C_ref,d18O_ref,rawSampleName,firstAcq = CIDS_func.Isodat_File_Parser(acqName)
+                voltRef,voltSam,d13C,d18O,d13C_ref,d18O_ref,rawSampleName,firstAcq,date = CIDS_func.Isodat_File_Parser(acqName)
                 # Creates a new sample if acquisition is not a 'CO2_multiply method'
                 # If acq is an AL_Pump_Trans, declare it to be a new sample
 
@@ -122,6 +122,7 @@ while True:
                     analyses.append(CIDS_func.CI())
                     analyses[-1].name = rawSampleName
                     analyses[-1].num = acqNum
+                    analyses[-1].date = date
                     print('Found new sample, with name: ' + rawSampleName)
                 # Catches the rare case where an acquisition block starts with a 'CO2_multiply'
                 # And checks whether this was intentional
@@ -150,6 +151,7 @@ while True:
                             analyses.append(CIDS_func.CI())
                             analyses[-1].name = rawSampleName
                             analyses[-1].num = acqNum
+                            analyses[-1].date = date
                         else:
                             print('Including acquisition ')
 
@@ -165,6 +167,7 @@ while True:
                         analyses.append(CIDS_func.CI())
                         analyses[-1].name = rawSampleName
                         analyses[-1].num = acqNum
+                        analyses[-1].date = date
                     else:
                         print('Including acquisition ')
 
@@ -178,6 +181,7 @@ while True:
                 analyses[-1].acqs[-1].d18O_gas = d18O
                 analyses[-1].acqs[-1].d13Cref = d13C_ref
                 analyses[-1].acqs[-1].d18Oref = d18O_ref
+                analyses[-1].acqs[-1].date = date
                 print('Acquisition '+str(acqNum)+ ' successfully imported.')
 
         else :
@@ -231,6 +235,15 @@ while True:
             newAnalyses = CIDS_func.CIDS_importer(filePath)
             print('{0} new analyses imported from file'.format(len(newAnalyses)))
             analyses += newAnalyses
+            print('Checking analyses types...')
+            while not CIDS_func.Sample_type_checker(analyses):
+                print('Some analyses types need to be assigned ')
+                typeGetterMode = raw_input('Get analyses types (a)utomatically or (m)anually? ').lower()
+                if typeGetterMode == 'm':
+                    analyses = CIDS_func.Get_types_manual(analyses)
+                else:
+                    analyses = CIDS_func.Get_types_auto(analyses)
+
             print('Successfully added to dataset')
         print('{0} total analyses imported'.format(len(analyses)))
 
