@@ -8,11 +8,14 @@ import matplotlib.pyplot as plt
 import os
 import struct
 import time
+import xlcor47_modified
 
-global hg_slope
-global hg_intercept
-hg_slope = 0.0132
-hg_intercept = -0.7869
+
+
+
+CIT_Carrara_CRF = 0.352
+TV03_CRF = 0.650
+
 
 class CI_VALUE(object):
     '''subclass defining how important isotopic ratios are calculated, and d18O_mineral'''
@@ -76,6 +79,27 @@ class CI_CORRECTED_VALUE(object):
     def __delete__(self, instance):
         raise AttributeError('Cannot delete CI corretion scheme')
 
+class CI_UNIVERSAL_VALUE(object):
+    '''subclass defining how isotopic ratios are averaged'''
+
+    def __init__(self, name):
+        self.name = name
+
+    def __get__(self,instance,cls):
+        if self.name in ['hg_slope', 'hg_intercept']:
+            return np.around(CI_hg_values(instance, self.name),5)
+
+        else:
+            raise ValueError('Not a valid value')
+
+    def __set__(self, obj, value):
+        raise AttributeError('Cannot change individual hg value')
+
+    def __delete__(self, instance):
+        raise AttributeError('Cannot delete individual hg value')
+
+
+
 
 class CI(object):
     "A class for all the attributes of a single clumped isotope measurement"
@@ -89,19 +113,13 @@ class CI(object):
         self.user=''
         self.skipFirstAcq = False
         self.TCO2 = np.nan
+        self.D48_excess = False
 
-    #
-    # def __getattr__(self,name):
-    #     if not self.acqs:
-    #         print 'No acquisitions for current analysis'
-    #
-    #     elif name in ['d45','d46','d47','d48','D47_raw','D48_raw','d13C','d18O',
-    #     'd45_stdev','d46_stdev','d47_stdev','d48_stdev','D47_stdev','D47_sterr','D48_stdev','d13C_stdev','d18O_stdev','d18O_min']:
-    #         CI_averages(self)
-        #
-        #
-        # else:
-        #   raise AttributeError, name
+        self.D47_ARF = np.nan
+        self.D47_error_internal = np.nan
+        self.D47_error_model = np.nan
+        self.D47_error_all = np.nan
+
     d45 = CI_AVERAGE('d45')
     d46 = CI_AVERAGE('d46')
     d47 = CI_AVERAGE('d47')
@@ -123,6 +141,8 @@ class CI(object):
     d18O_stdev = CI_AVERAGE('d18O_stdev')
 
     D47_CRF = CI_CORRECTED_VALUE('D47_CRF')
+    hg_slope = CI_UNIVERSAL_VALUE('hg_slope')
+    hg_intercept = CI_UNIVERSAL_VALUE('hg_intercept')
 
 
 
@@ -158,37 +178,6 @@ class ACQUISITION(object):
     d48=CI_VALUE('d48')
     d18O_min = CI_VALUE('d18O_min')
 
-
-    # def __getattr__(self,name):    #the first time this is called, calculates all relevant values, and stores them. So, next time it's not called
-    #     if name in ['d45','d46','d47','d48','D47_raw','D48_raw', 'd45_stdev',
-    #             'd46_stdev','d47_stdev','d48_stdev','D47_stdev','D47_sterr','D48_stdev', 'd18O_min']:
-    #         D47_calculation(self)
-    #         carb_gas_oxygen_fractionation(self)
-    #
-    #     else:
-    #         raise AttributeError, name
-    #
-
-
-
-def d13Ccalculator (samGas,refGas,refd13C):
-    '''calculates d13C in VPDB'''
-  # ideally, we'll write something that mimics isodat to correct raw ratios
-  # to vpdb scale. Isodat is configured to do this using a method called
-  # CO2_SSH, though CO2_craig is also an option.
-  #For now, let's just take isodat's calculations
-    vpdb=0.011237
-
-def carb_gas_oxygen_fractionation(analysis):
-    '''calculates the d18O of a carbonate mineral from which the CO2 was digested'''
-    # Done properly, this should be a function of the d18O of the gas, the reaction T,
-    # and the cabonate phase of the analysis, but we're sticking to 90C calcite for now'''
-
-    vsmow_18O=0.0020052
-    vpdb_18O = 0 #don't know this right now
-    d18O_vpdb = (analysis.d18O_gas-30.86)/1.03086
-    analysis.d18O_min = ((d18O_vpdb+1000)/1.00821)-1000
-    return analysis
 
 def carb_gas_oxygen_fractionation_acq(acq):
     '''calculates the d18O of a carbonate mineral from which the CO2 was digested'''
@@ -446,149 +435,25 @@ def CIDS_cleaner(analyses):
 
     return analyses
 
-def CIDS_subtractBackground(analyses):
-  '''Function to subtract the backgrounds off of all voltages'''
-
-  for i in range(len(analyses)):
-    for j in range(len(analyses[i].acqs)):
-      background=analyses[i].acqs[j].background
-      analyses[i].acqs[j].voltSam = analyses[i].acqs[j].voltSam-background
-      analyses[i].acqs[j].voltRef = analyses[i].acqs[j].voltRef-background
-
-def D47_calculation(acq):
-    '''Performs all the clumped isotope calculations for a single acq'''
-
-    vpdb_13C=0.0112372 # values copied from CIDS spreadsheet
-    vsmow_18O=0.0020052
-    vsmow_17O=0.0003799
-    lambda_17=0.5164
-
-    k=acq
-    R13_sa=(k.d13C/1000+1)*vpdb_13C
-    R18_sa=(k.d18O_gas/1000+1)*vsmow_18O
-    R17_sa=np.power((R18_sa/vsmow_18O),lambda_17)*vsmow_17O
-
-    R13_ref=(k.d13Cref/1000+1)*vpdb_13C
-    R18_ref=(k.d18Oref/1000+1)*vsmow_18O
-    R17_ref=np.power((R18_ref/vsmow_18O),lambda_17)*vsmow_17O
-
-    # calculating stochastic ratios
-    # to keep things organized and avoid repetetive code lines,
-    # organizing calculations in arrays where item 1 is sample gas, item 2 is ref gas
-    R13=np.array([R13_sa, R13_ref])
-    R17=np.array([R17_sa, R17_ref])
-    R18=np.array([R18_sa, R18_ref])
-
-
-    R45_stoch=R13+2*R17
-    R46_stoch=2*R13*R17+R17*R17+2*R18
-    R47_stoch=2*R13*R18+2*R17*R18+R13*R17*R17
-    R48_stoch=2*R17*R18*R13+R18*R18
-    R49_stoch=R13*R18*R18
-
-    R_stoch=np.array([R45_stoch, R46_stoch, R47_stoch, R48_stoch, R49_stoch]).T
-
-    # calculating measured voltage ratios, with sample/ref bracketing
-    R_measured_analysis=(k.voltSam[:,1:6]/(np.tile(k.voltSam[:,0],(5,1)).T))
-    R_measured_ref=(k.voltRef[:,1:6]/(np.tile(k.voltRef[:,0],(5,1)).T))
-    delta_measured=np.zeros(np.shape(R_measured_analysis)) # Preallocating for size of delta array
-
-    for l in range(len(R_measured_analysis)):
-        delta_measured[l,:]=(R_measured_analysis[l,:]/((R_measured_ref[l,:]+R_measured_ref[l+1,:])/2)-1)*1000
-    # couches ratios in sample/std bracketing, put in delta notation
-
-    delta_measured_mean=np.zeros((3,delta_measured.shape[1]))
-
-    delta_measured_mean[0,:]=np.mean(delta_measured, axis=0) # averaging for all cycles
-    delta_measured_mean[1,:]=np.std(delta_measured, axis=0,ddof=1)  # standard deviation among all cycles
-    delta_measured_mean[2,:]=delta_measured_mean[1,:]/np.sqrt(len(delta_measured)) # std error among all cycles
-
-    R_calculated_analysis = (delta_measured_mean[0,:]/1000 + 1)*R_stoch[1,:]
-    D_raw=(R_calculated_analysis/R_stoch[0,:] - 1)*1000
-
-
-    k.D47_raw=D_raw[2]-D_raw[0]-D_raw[1]
-    k.D48_raw=D_raw[3]-D_raw[0]-D_raw[1]
-    k.d47=delta_measured_mean[0,2]
-    k.d48=delta_measured_mean[0,3]
-
-    k.d45=delta_measured_mean[0,0]
-    k.d46=delta_measured_mean[0,1]
-
-    acq=k
-
-    return acq
-
-
-
-def D47_calculations(analyses):
-  '''Performs all the clumped isotope calculations on the raw voltages and bulk d13C and d18O values'''
-
-
-  for i in range(len(analyses)):
-
-    for j in range(len(analyses[i].acqs)):
-    #   analyses[i].acqs[j]=D47_calculation(analyses[i].acqs[j])
-      analyses[i].acqs[j]=carb_gas_oxygen_fractionation_acq(analyses[i].acqs[j])
-
-    # CI_averages(analyses[i])
-
-  return analyses
-
-
-def CI_averages(analysis):
-    '''Computes the mean, std dev, and std error for every attribute useful for a CI measurement'''
-
-    props1=['d45','d46','d47','d48','D47_raw','D48_raw','d13C','d18O','d18O_min']
-
-    props2=['d13C','d13C_stdev','d18O_gas','d18O_min','d18O_stdev',
-        'd47','d47_stdev','D47_raw','D47_stdev','d48','D48_raw','D48_stdev']
-
-    acqsToUse = range(len(analysis.acqs))
-
-    if analysis.skipFirstAcq:
-        del acqsToUse[0]
-
-    values=[]#preallocating for value storage
-
-    for i in acqsToUse:
-        values.append([analysis.acqs[i].d45,analysis.acqs[i].d46,analysis.acqs[i].d47,
-        analysis.acqs[i].d48, analysis.acqs[i].D47_raw,analysis.acqs[i].D48_raw,analysis.acqs[i].d13C,analysis.acqs[i].d18O_gas, analysis.acqs[i].d18O_min])
-        # values[i,:]=[analysis.acqs[i].d45,analysis.acqs[i].d46,analysis.acqs[i].d47,
-        # analysis.acqs[i].d48, samle.acqs[i].D47_raw,analysis.acqs[i].D48_raw,analysis.acqs[i].d13C,analysis.acqs[i].d18O_gas]
-
-    if len(values) != 0:
-        values = np.asarray(values)
-        (analysis.d45, analysis.d46, analysis.d47, analysis.d48, analysis.D47_raw, analysis.D48_raw,
-        analysis.d13C, analysis.d18O_gas, analysis.d18O_min) = values.mean(axis=0)
-
-        # (analysis.d45, analysis.d46, analysis.d47, analysis.d48, analysis.D47_raw, analysis.D48_raw,
-        # analysis.d13C, analysis.d18O) = values.mean(axis=0)
-
-        (analysis.d45_stdev, analysis.d46_stdev, analysis.d47_stdev, analysis.d48_stdev, analysis.D47_stdev,
-        analysis.D48_stdev, analysis.d13C_stdev,analysis.d18O_stdev, temp) = values.std(axis=0,ddof=1)
-
-        analysis.D47_sterr=analysis.D47_stdev/np.sqrt(values.shape[0])
-
 def FlatList_exporter(analyses,fileName, displayProgress = False):
     '''Exports a CSV file that is the same format as a traditional flat list'''
 
     export=open(fileName + '.csv','wb')
     wrt=csv.writer(export,dialect='excel')
     wrt.writerow(['User','date','Type','Sample ID','spec #\'s', 'acqs', 'd13C (vpdb)','d13C_stdev','d18O_gas (vsmow)','d18O_mineral (vpdb)',
-    'd18O_stdev','d47','d47_stdev','D47 (v. Oz)','D47_stdev','D47_sterr','d48', 'd48_stdev','D48','D48_stdev'])
+    'd18O_stdev','d47','d47_stdev','D47 (v. Oz)','D47_stdev','D47_sterr','d48', 'd48_stdev','D48','D48_stdev', 'hg_slope', 'hg_intercept','D47_CRF', 'D47_ARF', 'D47_ARF std error'])
     counter = 0
     if displayProgress:
         for item in analyses:
             wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
-            item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev ])
+            item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept, item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all, 3) ])
             counter += 1
             if ((counter * 100)*100) % (len(analyses)*100) == 0:
                 print(str((counter*100)/len(analyses)) + '% done')
     else:
         for item in analyses:
             wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
-            item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev ])
+            item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept, item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all,3) ])
     export.close()
     return
 
@@ -607,9 +472,9 @@ def CIDS_exporter(analyses, fileName, displayProgress = False):
             for i in range(len(acq.voltSam)):
                 wrt.writerow(['',''] + acq.voltSam[i,:].tolist() + acq.voltRef[i+1,:].tolist())
             wrt.writerow([])
-            wrt.writerow(['','acq num','ref gas d13C','ref gas d18O','name','type','d13C (vpdb)',
+            wrt.writerow(['','acq num','date','ref gas d13C','ref gas d18O','name','type','d13C (vpdb)',
             'd18O_gas (vsmow)', 'd45','d46','d47', 'd48', 'D47_raw', 'D48_raw'])
-            wrt.writerow(['__AcqInfo__',acq.acqNum, acq.d13Cref, acq.d18Oref, analysis.name, analysis.type, acq.d13C,
+            wrt.writerow(['__AcqInfo__',acq.acqNum, acq.date, acq.d13Cref, acq.d18Oref, analysis.name, analysis.type, acq.d13C,
             acq.d18O_gas, acq.d45, acq.d46, acq.d47, acq.d48, acq.D47_raw, acq.D48_raw])
 
         wrt.writerow([])
@@ -658,10 +523,11 @@ def CIDS_importer(filePath, displayProgress = False):
         if '__AcqInfo__' in line:
             acqIndex = line.index('__AcqInfo__')
             analyses[-1].acqs[-1].acqNum = float(line[acqIndex + 1])
-            analyses[-1].acqs[-1].d13Cref = float(line[acqIndex + 2])
-            analyses[-1].acqs[-1].d18Oref = float(line[acqIndex + 3])
-            analyses[-1].acqs[-1].d13C = float(line[acqIndex + 6])
-            analyses[-1].acqs[-1].d18O_gas = float(line[acqIndex + 7])
+            analyses[-1].acqs[-1].date = line[acqIndex + 2]
+            analyses[-1].acqs[-1].d13Cref = float(line[acqIndex + 3])
+            analyses[-1].acqs[-1].d18Oref = float(line[acqIndex + 4])
+            analyses[-1].acqs[-1].d13C = float(line[acqIndex + 7])
+            analyses[-1].acqs[-1].d18O_gas = float(line[acqIndex + 8])
             analyses[-1].acqs[-1].voltRef = np.asarray(analyses[-1].acqs[-1].voltRef)
             analyses[-1].acqs[-1].voltSam = np.asarray(analyses[-1].acqs[-1].voltSam)
             continue
@@ -827,44 +693,6 @@ def D47_calculation_valued(acq, objName):
 
     return calculatedCIValues[objName]
 
-def CI_averages_valued(analysis, objName):
-    '''Computes the mean, std dev, and std error for every attribute useful for a CI measurement'''
-
-    props2=['d13C','d13C_stdev','d18O_gas','d18O_min','d18O_stdev',
-        'd47','d47_stdev','D47_raw','D47_stdev', 'D47_sterr','d48', 'd48_stdev','D48_raw','D48_stdev']
-
-    acqsToUse = range(len(analysis.acqs))
-
-    if analysis.skipFirstAcq:
-        del acqsToUse[0]
-
-    values=[]#preallocating for value storage
-
-    for i in acqsToUse:
-        values.append([analysis.acqs[i].d45,analysis.acqs[i].d46,analysis.acqs[i].d47,
-        analysis.acqs[i].d48, analysis.acqs[i].D47_raw,analysis.acqs[i].D48_raw,
-        analysis.acqs[i].d13C,analysis.acqs[i].d18O_gas, analysis.acqs[i].d18O_min])
-        # values[i,:]=[analysis.acqs[i].d45,analysis.acqs[i].d46,analysis.acqs[i].d47,
-        # analysis.acqs[i].d48, samle.acqs[i].D47_raw,analysis.acqs[i].D48_raw,analysis.acqs[i].d13C,analysis.acqs[i].d18O_gas]
-
-    if len(values) != 0:
-        values = np.asarray(values)
-        (d45, d46, d47, d48, D47_raw, D48_raw,
-        d13C, d18O_gas, d18O_min) = values.mean(axis=0)
-
-        (d45_stdev, d46_stdev, d47_stdev, d48_stdev, D47_stdev,
-        D48_stdev, d13C_stdev, d18O_stdev, temp) = values.std(axis=0,ddof=1)
-
-        D47_sterr=D47_stdev/np.sqrt(values.shape[0])
-
-        calculatedCIAverages = calculatedCIValues = {'d45': d45, 'd46': d46,
-        'd47': d47, 'd48': d48, 'D47_raw': D47_raw, 'D48_raw': D48_raw,
-        'd45_stdev': d45_stdev, 'd46_stdev': d46_stdev, 'd47_stdev': d47_stdev,
-        'd48_stdev': d48_stdev, 'D47_stdev': D47_stdev, 'D48_stdev': D48_stdev,
-        'd13C': d13C, 'd18O_gas': d18O_gas, 'd18O_min': d18O_min,
-        'd13C_stdev': d13C_stdev, 'd18O_stdev': d18O_stdev, 'D47_sterr': D47_sterr}
-
-        return calculatedCIAverages[objName]
 
 def CI_averages_valued_individual(analysis, objName):
     '''Computes the mean, std dev, and std error for every attribute useful for a CI measurement'''
@@ -890,11 +718,6 @@ def CI_averages_valued_individual(analysis, objName):
 
     for i in acqsToUse:
         values.append(getattr(analysis.acqs[i],valName))
-        # values.append([analysis.acqs[i].d45,analysis.acqs[i].d46,analysis.acqs[i].d47,
-        # analysis.acqs[i].d48, analysis.acqs[i].D47_raw,analysis.acqs[i].D48_raw,
-        # analysis.acqs[i].d13C,analysis.acqs[i].d18O_gas, analysis.acqs[i].d18O_min])
-        # values[i,:]=[analysis.acqs[i].d45,analysis.acqs[i].d46,analysis.acqs[i].d47,
-        # analysis.acqs[i].d48, samle.acqs[i].D47_raw,analysis.acqs[i].D48_raw,analysis.acqs[i].d13C,analysis.acqs[i].d18O_gas]
 
     if len(values) != 0:
         values = np.asarray(values)
@@ -995,8 +818,88 @@ def Get_types_manual(analyses):
 
     return(analyses)
 
-def CI_CRF_data_corrector(analyses):
+def CI_CRF_data_corrector(analyses, showFigures = True):
     '''Extended function to do all aspects of CRF data correction'''
+
+    # First, make a list of all hgs
+
+    # Next, make a hg D48 line, using a York regression
+    # hg_slope_48, hg_intercept_48, r_48, sm, sb = lsqfitma([i.d48 for i in hgs], [i.D48_raw for i in hgs])
+    CI_48_excess_checker(analyses)
+    # Make a new hg collection with any 48 excesses removed
+    hgs = [i for i in analyses if (i.type == 'hg' and not i.D48_excess)]
+    d47_hgs = np.asarray([i.d47 for i in hgs])
+    D47_raw_hgs = np.asarray([i.D47_raw for i in hgs])
+    d47_stdev_hgs = np.asarray([i.d47_stdev for i in hgs])
+    D47_sterr_hgs = np.asarray([i.D47_sterr for i in hgs])
+    # Now, make hg D47 line, using a York regression
+    global hg_slope, hg_intercept
+    hg_slope, hg_intercept, r_47, sm, sb, xc, yc, ct = lsqcubic(d47_hgs, D47_raw_hgs,d47_stdev_hgs, D47_sterr_hgs)
+
+    D47_raw_hgs_model = d47_hgs*hg_slope+hg_intercept
+    if showFigures:
+        plt.figure(0)
+        plt.figure(0).hold(True)
+        plt.errorbar(d47_hgs, D47_raw_hgs, xerr = d47_stdev_hgs, yerr = D47_sterr_hgs, fmt = 'bo')
+        plt.plot(d47_hgs, D47_raw_hgs_model, '-')
+        plt.ylabel(ur'$\Delta_{47} \/ (\u2030)$')
+        plt.xlabel(ur'$\delta^{47} \/ (\u2030)$')
+        plt.show()
+
+        # Calculation of the D47_CRF values are done automatically given its definition, based on the global hg slope and int
+        # Plot the stds
+        stds_Carrara = [i for i in analyses if (i.type == 'std' and 'carrara' in i.name.lower() and not i.D48_excess)]
+        stds_TV03 = [i for i in analyses if (i.type == 'std' and 'tv03' in i.name.lower() and not i.D48_excess)]
+        plt.figure(0)
+        plt.figure(0).hold(True)
+        plt.errorbar([CIT_Carrara_CRF for i in range(len(stds_Carrara))],[j.D47_CRF-CIT_Carrara_CRF for j in stds_Carrara], yerr = [k.D47_sterr for k in stds_Carrara], fmt = 'o')
+        plt.errorbar([TV03_CRF for i in range(len(stds_TV03))],[j.D47_CRF-TV03_CRF for j in stds_TV03], yerr = [k.D47_sterr for k in stds_TV03], fmt = 'o')
+        plt.show()
+
+    return
+
+def CI_48_excess_checker(analyses, showFigures = False):
+    '''Checks for 48 excess using hg slope and int, based on a certain pre-specified tolerance'''
+    D48_excess_tolerance = 1
+    hgs = [i for i in analyses if i.type == 'hg']
+    hg_slope_48, hg_intercept_48, r_48, sm_48, sb_48, xc_48, yc_, ct_ = lsqcubic(np.asarray([i.d48 for i in hgs]), np.asarray([i.D48_raw for i in hgs]),
+    np.asarray([i.d48_stdev for i in hgs]), np.asarray([i.D48_stdev for i in hgs]))
+    for i in analyses:
+        D48_predicted = i.d48*hg_slope_48 + hg_intercept_48
+        D48_excess_value = i.D48_raw - D48_predicted
+        if np.abs(D48_excess_value) > 1:
+            i.D48_excess = True
+            print('D48 excess found for sample: ' + i.name + ', ' + str(i.num))
+
+
+    if showFigures:
+        plt.figure(1)
+        plt.subplot(2,1,1)
+        d48s = np.asarray([i.d48 for i in hgs])
+        D48s_model = d48s * hg_slope_48 + hg_intercept_48
+        # First, plotting the D48 line, TODO: include regression
+        plt.figure(1).hold(True)
+        plt.errorbar(np.asarray([i.d48 for i in hgs]), np.asarray([i.D48_raw for i in hgs]),
+        xerr = np.asarray([i.d48_stdev for i in hgs]), yerr = np.asarray([i.D48_stdev for i in hgs]),
+        fmt = 'bo')
+        plt.plot(d48s, D48s_model,'r-')
+        plt.xlabel(ur'$\delta^{48} \/ ( \u2030 $)')
+        plt.ylabel(ur'$\Delta_{48} \/ ( \u2030 $)')
+
+        # Plotting all samples in D47 vs d47 space,
+        plt.subplot(2,1,2)
+        plt.errorbar(np.asarray([i.d47 for i in analyses]), np.asarray([i.D47_raw for i in analyses]),
+        xerr = np.asarray([i.d47_stdev for i in analyses]), yerr = np.asarray([i.D47_sterr for i in analyses]),
+        fmt = 'o')
+        plt.xlabel(ur'$\delta^{47} \/ ( \u2030 $)')
+        plt.ylabel(ur'$\Delta_{47} \/ ( \u2030 $)')
+        # plt.savefig('D48_line.pdf', format = 'pdf')
+        plt.show()
+
+
+    return
+
+
 
 
 
@@ -1004,11 +907,62 @@ def CI_CRF_corrector(analysis, objName):
     '''Function to apply the heated gas correction in the Caltech Ref Frame'''
 
     acid_digestion_correction = 0.081
-    D47_hg_corrected = analysis.D47_raw - (analysis.d47*hg_slope + hg_intercept)
-    D47_stretching = D47_hg_corrected *(-0.8453)/hg_intercept
-    D47_CRF = D47_stretching + acid_digestion_correction
+    try:
+        D47_hg_corrected = analysis.D47_raw - (analysis.d47*hg_slope + hg_intercept)
+        D47_stretching = D47_hg_corrected *(-0.8453)/hg_intercept
+        D47_CRF = D47_stretching + acid_digestion_correction
+    except NameError:
+        return(np.NaN)
 
     return(D47_CRF)
+
+def CI_hg_values(instance, objName):
+    '''Placeholder for hg slope and int when used in CI classes'''
+    try:
+        values = {'hg_slope': hg_slope, 'hg_intercept': hg_intercept}
+        return(values[objName])
+    except(NameError, AttributeError):
+        return(np.NaN)
+
+
+def Daeron_data_creator(analyses):
+    '''Creates a list of dictionaries in the format needed for M. Daeron's data
+    processing script '''
+    daeronData = []
+    for i in analyses:
+        daeronData.append({'label': i.name, 'd47': i.d47, 'rawD47': i.D47_raw,
+        'srawD47': i.D47_sterr} )
+        if i.type == 'hg':
+            daeronData[-1]['TCO2eq'] = 1000.0
+            daeronData[-1]['trueD47'] = xlcor47_modified.CO2eqD47(1000.0)
+        elif i.type == 'eg':
+            daeronData[-1]['TCO2eq'] = 25.0
+            daeronData[-1]['trueD47'] = xlcor47_modified.CO2eqD47(25.0)
+    return(daeronData)
+
+def Daeron_data_processer(analyses, showFigures = False):
+    '''Performs Daeron-style correction to put clumped isotope data into the ARF'''
+
+    daeronData = Daeron_data_creator(analyses)
+
+    global daeronBestFitParams, CorrelationMatrix
+    daeronBestFitParams, CorrelationMatrix = xlcor47_modified.process_data(daeronData)
+
+    for i in range(len(daeronData)):
+        analyses[i].D47_ARF = daeronData[i]['corD47']
+        analyses[i].D47_error_internal = daeronData[i]['scorD47_internal']
+        analyses[i].D47_error_model = daeronData[i]['scorD47_model']
+        analyses[i].D47_error_all = daeronData[i]['scorD47_all']
+
+    if showFigures:
+        xlcor47_modified.plot_data( daeronData, f, CM ,'filename')
+
+    return
+
+
+
+
+
 
 def lsqfitma(X, Y):
     """
