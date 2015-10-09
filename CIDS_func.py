@@ -16,6 +16,9 @@ import xlcor47_modified
 CIT_Carrara_CRF = 0.352
 TV03_CRF = 0.650
 
+global mass47PblSlope
+mass47PblSlope = 0
+
 
 class CI_VALUE(object):
     '''subclass defining how important isotopic ratios are calculated, and d18O_mineral'''
@@ -65,12 +68,11 @@ class CI_CORRECTED_VALUE(object):
         self.name = name
 
     def __get__(self,instance,cls):
-        if -2 < instance.D47_raw < 2:
-            if self.name in ['D47_CRF']:
-                return np.around(CI_CRF_corrector(instance, self.name),3)
+        if self.name in ['D47_CRF']:
+            return np.around(CI_CRF_corrector(instance, self.name),3)
 
         else:
-            raise ValueError('Sampe D47_raw is out of range')
+            raise ValueError('Sample D47_raw is out of range')
 
 
     def __set__(self, obj, value):
@@ -80,7 +82,7 @@ class CI_CORRECTED_VALUE(object):
         raise AttributeError('Cannot delete CI corretion scheme')
 
 class CI_UNIVERSAL_VALUE(object):
-    '''subclass defining how isotopic ratios are averaged'''
+    '''subclass defining how heated gases are taken'''
 
     def __init__(self, name):
         self.name = name
@@ -97,6 +99,26 @@ class CI_UNIVERSAL_VALUE(object):
 
     def __delete__(self, instance):
         raise AttributeError('Cannot delete individual hg value')
+
+class CI_VOLTAGE(object):
+    '''subclass defining how raw voltages are corrected'''
+
+    def __init__(self, name):
+        self.name = name
+
+    def __get__(self,instance,cls):
+        if self.name in ['voltSam', 'voltRef']:
+            return np.around(CI_background_correction(instance, self.name),3)
+
+        else:
+            raise ValueError('Not a valid value')
+
+    def __set__(self, obj, value):
+        raise AttributeError('Cannot change individual voltage correction scheme')
+
+    def __delete__(self, instance):
+        raise AttributeError('Cannot delete individual voltage correction scheme')
+
 
 
 
@@ -152,8 +174,8 @@ class ACQUISITION(object):
 
     def __init__(self,acqNum):
         self.acqNum=acqNum
-        self.voltSam=[]
-        self.voltRef=[]
+        self.voltSam_raw=[]
+        self.voltRef_raw=[]
         self.background=[]
         self.d13C = 0
         self.d18O_gas = 0
@@ -177,6 +199,9 @@ class ACQUISITION(object):
     D48_raw=CI_VALUE('D48_raw')
     d48=CI_VALUE('d48')
     d18O_min = CI_VALUE('d18O_min')
+    voltSam = CI_VOLTAGE('voltSam')
+    voltRef = CI_VOLTAGE('voltRef')
+
 
 
 def carb_gas_oxygen_fractionation_acq(acq):
@@ -205,8 +230,8 @@ def Isodat_File_Parser(fileName):
     #Searching for the start of the raw voltages
     start=buff.find('CIntensityData')
     keys=[]
-    voltRef=[]
-    voltSam=[]
+    voltRef_raw=[]
+    voltSam_raw=[]
     #Slightly elegant method: pulling out based on spacing after 'CIntensityData' ascii key
     # TODO: make this more flexible
     # TODO: Catch errors if wrong voltage sequence found
@@ -214,10 +239,10 @@ def Isodat_File_Parser(fileName):
     voltRef.append(struct.unpack('6d',buff[startPreVolt:(startPreVolt+6*8)]))
     for i in range(7):
         startRefVolt=start+52+i*164 #observed location of ref gas voltage cycles
-        voltRef.append(struct.unpack('6d',buff[startRefVolt:(startRefVolt+6*8)]))
+        voltRef_raw.append(struct.unpack('6d',buff[startRefVolt:(startRefVolt+6*8)]))
 
         startSamVolt=start+1344+i*160 #observed location of sample gas voltage cycles
-        voltSam.append(struct.unpack('6d',buff[startSamVolt:(startSamVolt+6*8)]))
+        voltSam_raw.append(struct.unpack('6d',buff[startSamVolt:(startSamVolt+6*8)]))
 
     #2. Getting d13C and d18O data for each cycle
     startEval=buff.find('CDualInletEvaluatedDataCollect') #rough guess of starting position
@@ -308,7 +333,7 @@ def Isodat_File_Parser(fileName):
     time_str = time.strftime('%m/%d/%Y', time.localtime(time_t_time))
 
 
-    return voltRef, voltSam, d13C_final, d18O_final, d13C_ref, d18O_ref, analysisName, firstAcq, time_str
+    return voltRef_raw, voltSam_raw, d13C_final, d18O_final, d13C_ref, d18O_ref, analysisName, firstAcq, time_str
 
 
 def CIDS_parser(filePath):
@@ -352,11 +377,11 @@ def CIDS_parser(filePath):
       if cycle < 8:
         try:
           voltSams=[float(v) for v in line[preIndex+1:preIndex+7]]
-          analyses[-1].acqs[-1].voltSam.append(voltSams)
+          analyses[-1].acqs[-1].voltSam_raw.append(voltSams)
         except ValueError:
           pass
         voltRefs = [float(v2) for v2 in line[preIndex+7:preIndex+13]]
-        analyses[-1].acqs[-1].voltRef.append(voltRefs)
+        analyses[-1].acqs[-1].voltRef_raw.append(voltRefs)
         cycle += 1
 
       if 'Date:' in line:
@@ -424,8 +449,8 @@ def CIDS_cleaner(analyses):
     for i in range(len(analyses)):
             for j in range(len(analyses[i].acqs)):
                 # converting voltagted to arrays, and doing 3 sig figs to match CIDS Sheet
-                analyses[i].acqs[j].voltSam=np.around(np.asarray(analyses[i].acqs[j].voltSam),3)
-                analyses[i].acqs[j].voltRef=np.around(np.asarray(analyses[i].acqs[j].voltRef),3)
+                analyses[i].acqs[j].voltSam_raw=np.around(np.asarray(analyses[i].acqs[j].voltSam_raw),3)
+                analyses[i].acqs[j].voltRef_raw=np.around(np.asarray(analyses[i].acqs[j].voltRef_raw),3)
                 analyses[i].acqs[j].background=np.asarray(analyses[i].acqs[j].background)
                 # rounding d13C and d18O of each acq to 3 sig figs to match CIDS sheet
                 (analyses[i].acqs[j].d13C,analyses[i].acqs[j].d18O_gas) = np.around((analyses[i].acqs[j].d13C,analyses[i].acqs[j].d18O_gas),3)
@@ -511,13 +536,13 @@ def CIDS_importer(filePath, displayProgress = False):
             voltIndex = line.index('__AcqVoltage__')
             cycle = 0
             voltRefs = [float(vr) for vr in line[voltIndex+8:voltIndex+14]]
-            analyses[-1].acqs[-1].voltRef.append(voltRefs)
+            analyses[-1].acqs[-1].voltRef_raw.append(voltRefs)
             continue
         if cycle < (cycles_in_acqs):
             voltSams=[float(vs) for vs in line[voltIndex+2:voltIndex+8]]
             voltRefs = [float(vr) for vr in line[voltIndex+8:voltIndex+14]]
-            analyses[-1].acqs[-1].voltSam.append(voltSams)
-            analyses[-1].acqs[-1].voltRef.append(voltRefs)
+            analyses[-1].acqs[-1].voltSam_raw.append(voltSams)
+            analyses[-1].acqs[-1].voltRef_raw.append(voltRefs)
             cycle += 1
             continue
         if '__AcqInfo__' in line:
@@ -528,8 +553,8 @@ def CIDS_importer(filePath, displayProgress = False):
             analyses[-1].acqs[-1].d18Oref = float(line[acqIndex + 4])
             analyses[-1].acqs[-1].d13C = float(line[acqIndex + 7])
             analyses[-1].acqs[-1].d18O_gas = float(line[acqIndex + 8])
-            analyses[-1].acqs[-1].voltRef = np.asarray(analyses[-1].acqs[-1].voltRef)
-            analyses[-1].acqs[-1].voltSam = np.asarray(analyses[-1].acqs[-1].voltSam)
+            analyses[-1].acqs[-1].voltRef_raw = np.asarray(analyses[-1].acqs[-1].voltRef_raw)
+            analyses[-1].acqs[-1].voltSam_raw = np.asarray(analyses[-1].acqs[-1].voltSam_raw)
             continue
         if '__SampleSummary__' in line:
             summaryIndex = line.index('__SampleSummary__')
@@ -854,9 +879,35 @@ def CI_CRF_data_corrector(analyses, showFigures = True):
         plt.figure(0).hold(True)
         plt.errorbar([CIT_Carrara_CRF for i in range(len(stds_Carrara))],[j.D47_CRF-CIT_Carrara_CRF for j in stds_Carrara], yerr = [k.D47_sterr for k in stds_Carrara], fmt = 'o')
         plt.errorbar([TV03_CRF for i in range(len(stds_TV03))],[j.D47_CRF-TV03_CRF for j in stds_TV03], yerr = [k.D47_sterr for k in stds_TV03], fmt = 'o')
+        plt.xlim(0.3, 0.7)
+        plt.xlabel(ur'$\mathrm{}\Delta_{47, CRF} \/ (\u2030)}$')
+        plt.ylabel(ur'$\mathrm{\Delta_{47, measured}-\Delta_{47, expected} \/ (\u2030)}$')
         plt.show()
 
     return
+
+def CI_hg_slope_finder(hgs):
+    # hgs = [i for i in analyses if (i.type == 'hg' and not i.D48_excess)]
+    d47_hgs = np.asarray([i.d47 for i in hgs])
+    D47_raw_hgs = np.asarray([i.D47_raw for i in hgs])
+    d47_stdev_hgs = np.asarray([i.d47_stdev for i in hgs])
+    D47_sterr_hgs = np.asarray([i.D47_sterr for i in hgs])
+    # Now, make hg D47 line, using a York regression
+    global hg_slope, hg_intercept
+    hg_slope, hg_intercept, r_47, sm, sb, xc, yc, ct = lsqcubic(d47_hgs, D47_raw_hgs,d47_stdev_hgs, D47_sterr_hgs)
+
+    return hg_slope
+
+#
+# def CI_hg_slope_finder(d47_hgs, D47_raw_hgs, d47_stdev_hgs, D47_sterr_hgs):
+#     # Now, make hg D47 line, using a York regression
+#     global hg_slope, hg_intercept
+#     hg_slope, hg_intercept, r_47, sm, sb, xc, yc, ct = lsqcubic(d47_hgs, D47_raw_hgs,d47_stdev_hgs, D47_sterr_hgs)
+#
+#     return hg_slope
+
+
+
 
 def CI_48_excess_checker(analyses, showFigures = False):
     '''Checks for 48 excess using hg slope and int, based on a certain pre-specified tolerance'''
@@ -898,7 +949,6 @@ def CI_48_excess_checker(analyses, showFigures = False):
 
 
     return
-
 
 
 
@@ -955,17 +1005,89 @@ def Daeron_data_processer(analyses, showFigures = False):
         analyses[i].D47_error_all = daeronData[i]['scorD47_all']
 
     if showFigures:
-        xlcor47_modified.plot_data( daeronData, f, CM ,'filename')
+        xlcor47_modified.plot_data( daeronData, daeronBestFitParams, CorrelationMatrix ,'filename')
 
     return
 
+def ExportSequence(analyses):
+    '''Most common export sequence'''
+    print('Exporting to temporary CIDS and FlatList files ')
+    print('Exporting full acqs to a CIDS sheet...')
+    exportNameCIDS = 'autoCIDS_Export'
+    CIDS_exporter(analyses, exportNameCIDS)
+    print('Exporting analyses to a flatlist...')
+    exportNameFlatlist = 'autoFlatListExport'
+    FlatList_exporter(analyses,exportNameFlatlist)
+    print('Analyses successfully exported')
+    doDaeron = raw_input('Export analyses for a Daeron-style ARF reduction (y/n)? ')
+    if doDaeron.lower() == 'y':
+        exportNameDaeron = 'autoDaeronExport'
+        Get_gases(analyses)
+        Daeron_exporter(analyses,exportNameDaeron)
 
+    return
+
+# def CI_background_correction(instance, objName):
+#     voltSamTemp = np.copy(instance.voltSam_raw)
+#     voltRefTemp = np.copy(instance.voltRef_raw)
+#
+#     slopeArray = np.array([0, 0 , 0, mass47PblSlope, 0, 0])
+#     interceptArray  = np.array([0, 0, 0, mass47PblIntercept, 0, 0])
+#
+#     # mass 47 correction
+#     try:
+#         # print('Correcting voltages now')
+#         # print('using this mass47 slope: '+ str(mass47PblSlope))
+#         voltSamTemp[:,3] = voltSamTemp[:,3] - mass47PblSlope * voltSamTemp[:,0] - mass47PblIntercept
+#         voltRefTemp[:,3] = voltRefTemp[:,3] - mass47PblSlope * voltRefTemp[:,0] - mass47PblIntercept
+#     except(IndexError):
+#         return 0
+#
+#     voltages = {'voltSam': voltSamTemp, 'voltRef': voltRefTemp}
+#
+#     return(voltages[objName])
+
+def CI_background_correction(instance, objName):
+    # voltSamTemp = np.copy(instance.voltSam_raw)
+    # voltRefTemp = np.copy(instance.voltRef_raw)
+
+    slopeArray = np.array([0, 0 , 0, mass47PblSlope, 0, 0])
+    # interceptArray  = np.array([0, 0, 0, mass47PblIntercept, 0, 0])
+
+    # mass 47 correction
+    try:
+        # print('Correcting voltages now')
+        # print('using this mass47 slope: '+ str(mass47PblSlope))
+        voltSamTemp = instance.voltSam_raw - np.transpose(np.tile(instance.voltSam_raw[:,0],(len(slopeArray),1)))*slopeArray
+        voltRefTemp = instance.voltRef_raw - np.transpose(np.tile(instance.voltRef_raw[:,0],(len(slopeArray),1)))*slopeArray
+    except(IndexError):
+        return 0
+
+    voltages = {'voltSam': voltSamTemp, 'voltRef': voltRefTemp}
+
+    return(voltages[objName])
+
+
+def Set_mass_47_pbl(pblSlope):
+    global mass47PblSlope
+    mass47PblSlope = pblSlope
+    # mass47PblIntercept = pblIntercept
 
 
 
 
 def lsqfitma(X, Y):
     """
+        From:
+        # teaching.py
+    #
+    # purpose:  Teaching module of ff_tools.
+    # author:   Filipe P. A. Fernandes
+    # e-mail:   ocefpaf@gmail
+    # web:      http://ocefpaf.tiddlyspot.com/
+    # created:  09-Sep-2011
+    # modified: Sun 23 Jun 2013 04:30:45 PM BRT
+    #
     Calculate a "MODEL-2" least squares fit.
 
     The line is fit by MINIMIZING the NORMAL deviates.

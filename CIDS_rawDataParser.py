@@ -8,23 +8,6 @@ import matplotlib.pyplot as plt
 import CIDS_func
 import os
 
-def ExportSequence(analyses):
-    '''Most common export sequence'''
-    print('Exporting to temporary CIDS and FlatList files ')
-    print('Exporting full acqs to a CIDS sheet...')
-    exportNameCIDS = 'autoCIDS_Export'
-    CIDS_func.CIDS_exporter(analyses, exportNameCIDS)
-    print('Exporting analyses to a flatlist...')
-    exportNameFlatlist = 'autoFlatListExport'
-    CIDS_func.FlatList_exporter(analyses,exportNameFlatlist)
-    print('Analyses successfully exported')
-    doDaeron = raw_input('Export analyses for a Daeron-style ARF reduction (y/n)? ')
-    if doDaeron.lower() == 'y':
-        exportNameDaeron = 'autoDaeronExport'
-        CIDS_func.Get_gases(analyses)
-        CIDS_func.Daeron_exporter(analyses,exportNameDaeron)
-
-    return
 
 analyses = []
 print('Welcome to the carbonate clumped isotope importer/exporter')
@@ -225,7 +208,7 @@ while True:
 
             exportNowChoice = raw_input('Export analyses now (y/n)? ').lower()
             if exportNowChoice == 'y':
-                ExportSequence(analyses)
+                CIDS_func.ExportSequence(analyses)
 
 
     if taskChoice == 'C':
@@ -268,7 +251,7 @@ while True:
                 else:
                     analyses = CIDS_func.Get_types_auto(analyses)
 
-            ExportSequence(analyses)
+            CIDS_func.ExportSequence(analyses)
 
     if taskChoice == 'P':
         print('Processing data in all relevant reference frames')
