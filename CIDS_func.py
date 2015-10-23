@@ -236,7 +236,7 @@ def Isodat_File_Parser(fileName):
     # TODO: make this more flexible
     # TODO: Catch errors if wrong voltage sequence found
     startPreVolt=start+2304+168 #observed location of 'pre' cycle on ref gas side
-    voltRef.append(struct.unpack('6d',buff[startPreVolt:(startPreVolt+6*8)]))
+    voltRef_raw.append(struct.unpack('6d',buff[startPreVolt:(startPreVolt+6*8)]))
     for i in range(7):
         startRefVolt=start+52+i*164 #observed location of ref gas voltage cycles
         voltRef_raw.append(struct.unpack('6d',buff[startRefVolt:(startRefVolt+6*8)]))

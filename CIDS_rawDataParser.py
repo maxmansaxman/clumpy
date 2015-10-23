@@ -45,7 +45,7 @@ while True:
                     if acqNum in imported:
                         print('You already imported this file')
                     else:
-                        voltRef,voltSam,d13C,d18O,d13C_ref,d18O_ref,rawSampleName,lastAcq = CIDS_func.Isodat_File_Parser(acqName)
+                        voltRef_raw,voltSam_raw,d13C,d18O,d13C_ref,d18O_ref,rawSampleName,lastAcq = CIDS_func.Isodat_File_Parser(acqName)
                         if sampleName != rawSampleName :
                             print('Sample name: ' + analyses[-1].name + ' does not match name in file: ' + rawSampleName + ' ')
                             nameErrorChoice = raw_input('Are you sure you want to include this acquisition (y/n)? ')
@@ -53,8 +53,8 @@ while True:
                                 continue
                         imported.append(acqNum)
                         analyses[-1].acqs.append(CIDS_func.ACQUISITION(acqNum))
-                        analyses[-1].acqs[-1].voltRef = voltRef
-                        analyses[-1].acqs[-1].voltSam = voltSam
+                        analyses[-1].acqs[-1].voltRef_raw = voltRef_raw
+                        analyses[-1].acqs[-1].voltSam_raw = voltSam_raw
                         analyses[-1].acqs[-1].d13C = d13C
                         analyses[-1].acqs[-1].d18O_gas = d18O
                         analyses[-1].acqs[-1].d13Cref = d13C_ref
@@ -107,13 +107,13 @@ while True:
                 acqNum=int(acqNum)
                 # Actually processing the file
                 print('Importing acq num ' + str(acqNum) + ' ')
-                voltRef,voltSam,d13C,d18O,d13C_ref,d18O_ref,rawSampleName,firstAcq,date = CIDS_func.Isodat_File_Parser(acqName)
+                voltRef_raw,voltSam_raw,d13C,d18O,d13C_ref,d18O_ref,rawSampleName,firstAcq,date = CIDS_func.Isodat_File_Parser(acqName)
                 # Creates a new sample if acquisition is not a 'CO2_multiply method'
                 # If acq is an AL_Pump_Trans, declare it to be a new sample
 
                 # Catches acqs where enough gas did not make it to the bellows in and skips them
-                if voltSam[-1][0] < 15000:
-                    print('Skipping acq ' + str(acqList[i]) + ' from sample ' + rawSampleName + ' because voltage too low on mass 44: ' + str(voltSam[-1][0]))
+                if voltSam_raw[-1][0] < 15000:
+                    print('Skipping acq ' + str(acqList[i]) + ' from sample ' + rawSampleName + ' because voltage too low on mass 44: ' + str(voltSam_raw[-1][0]))
                     continue
                 if len(analyses) == 0:
                     firstAcq = True
@@ -175,8 +175,8 @@ while True:
                 # if no errors caught above, actually add acquisition to analyses
                 imported.append(acqNum)
                 analyses[-1].acqs.append(CIDS_func.ACQUISITION(acqNum))
-                analyses[-1].acqs[-1].voltRef = voltRef
-                analyses[-1].acqs[-1].voltSam = voltSam
+                analyses[-1].acqs[-1].voltRef_raw = voltRef_raw
+                analyses[-1].acqs[-1].voltSam_raw = voltSam_raw
                 analyses[-1].acqs[-1].d13C = d13C
                 analyses[-1].acqs[-1].d18O_gas = d18O
                 analyses[-1].acqs[-1].d13Cref = d13C_ref
