@@ -258,7 +258,11 @@ while True:
         print('Processing data in caltech ref frame')
         CIDS_func.CI_CRF_data_corrector(analyses)
         print('Processing data in absolute ref frame, with the Daeron method')
-        CIDS_func.Daeron_data_processer(analyses)
+        daeronPlotChoice = raw_input('Show Daeron plots? (y/n) ').lower()
+        if daeronPlotChoice == 'y':
+            CIDS_func.Daeron_data_processer(analyses, showFigures = True)
+        else:
+            CIDS_func.Daeron_data_processer(analyses, showFigures = False)
     if taskChoice == 'Q':
         print('Goodbye! ')
         break
