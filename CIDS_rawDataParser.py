@@ -83,10 +83,13 @@ while True:
                 quit()
             acqList=sorted(acqList)
             startNum = raw_input('Number of first acquisition to be processed: ')
-            stopNum = raw_input('Number of last acquisition to be processed: ')
+            stopNum = raw_input('Number of last acquisition to be processed, or (l)ast: ')
             #convert to int first to remove any leading zeros
             startNum = int(startNum)
-            stopNum = int(stopNum)
+            if stopNum in ['l', 'L', '-1', 'end']:
+                stopNum = int(acqList[-1].rstrip('.did').replace('Acquisition-',''))
+            else:
+                stopNum = int(stopNum)
 
             #now, adding the proper number of leading zeros in order to get an exact match
             startName = 'Acquisition-' + (4-len(str(startNum)))*'0' + str(startNum) + '.did'
