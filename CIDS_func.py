@@ -16,6 +16,9 @@ import xlcor47_modified
 CIT_Carrara_CRF = 0.352
 TV03_CRF = 0.650
 
+CIT_Carrara_ARF = 0.3115 + 0.092
+TV03_ARF = 0.635 + 0.092
+
 global mass47PblSlope
 mass47PblSlope = 0
 
@@ -30,8 +33,8 @@ class CI_VALUE(object):
         if len(instance.voltRef)>6:
             if self.name in ['d45', 'd46', 'd47', 'd48', 'D47_raw', 'D48_raw']:
                 return np.around(D47_calculation_valued(instance, self.name),3)
-            elif self.name in ['d18O_min']:
-                return carb_gas_oxygen_fractionation_acq(instance)
+            # elif self.name in ['d18O_min']:
+                # return carb_gas_oxygen_fractionation_acq(instance)
 
     def __set__(self, obj, value):
         raise AttributeError('Cannot change CI calculation scheme')
@@ -47,9 +50,11 @@ class CI_AVERAGE(object):
 
     def __get__(self,instance,cls):
         if len(instance.acqs)>=1:
-            if self.name in ['d13C','d13C_stdev','d18O_gas','d18O_min','d18O_stdev',
+            if self.name in ['d13C','d13C_stdev','d18O_gas','d18O_stdev',
             'd47','d47_stdev','D47_raw','D47_stdev', 'D47_sterr','d48','d48_stdev','D48_raw','D48_stdev']:
                 return np.around(CI_averages_valued_individual(instance, self.name),3)
+            elif self.name in ['d18O_min']:
+                return np.around(carb_gas_oxygen_fractionation_acq(instance),3)
 
         else:
             raise ValueError('Sample has no acquisitions to average')
@@ -70,6 +75,10 @@ class CI_CORRECTED_VALUE(object):
     def __get__(self,instance,cls):
         if self.name in ['D47_CRF']:
             return np.around(CI_CRF_corrector(instance, self.name),3)
+        elif self.name in ['D47_ARF_acid']:
+            return np.around(CI_ARF_acid_corrector(instance, self.name),3)
+        elif self.name in ['T_D47_ARF']:
+            return np.around(CI_temp_calibrations(instance, self.name),2)
 
         else:
             raise ValueError('Sample D47_raw is out of range')
@@ -80,6 +89,7 @@ class CI_CORRECTED_VALUE(object):
 
     def __delete__(self, instance):
         raise AttributeError('Cannot delete CI corretion scheme')
+
 
 class CI_UNIVERSAL_VALUE(object):
     '''subclass defining how heated gases are taken'''
@@ -136,6 +146,8 @@ class CI(object):
         self.skipFirstAcq = False
         self.TCO2 = np.nan
         self.D48_excess = False
+        self.rxnTemp = 90
+        self.mineral = 'calcite'
 
         self.D47_ARF = np.nan
         self.D47_error_internal = np.nan
@@ -166,6 +178,9 @@ class CI(object):
     hg_slope = CI_UNIVERSAL_VALUE('hg_slope')
     hg_intercept = CI_UNIVERSAL_VALUE('hg_intercept')
 
+    D47_ARF_acid = CI_CORRECTED_VALUE('D47_ARF_acid')
+    T_D47_ARF = CI_CORRECTED_VALUE('T_D47_ARF')
+
 
 
 class ACQUISITION(object):
@@ -183,6 +198,8 @@ class ACQUISITION(object):
         self.d18Oref = 0
         self.date=''
         self.time=''
+        # self.rxnTemp = 90
+        # self.mineral = 'calcite'
 
         self.D47_excel=0
         self.D48_excel=0
@@ -198,21 +215,30 @@ class ACQUISITION(object):
     d47=CI_VALUE('d47')
     D48_raw=CI_VALUE('D48_raw')
     d48=CI_VALUE('d48')
-    d18O_min = CI_VALUE('d18O_min')
+    # d18O_min = CI_VALUE('d18O_min')
     voltSam = CI_VOLTAGE('voltSam')
     voltRef = CI_VOLTAGE('voltRef')
 
 
 
-def carb_gas_oxygen_fractionation_acq(acq):
+def carb_gas_oxygen_fractionation_acq(instance):
     '''calculates the d18O of a carbonate mineral from which the CO2 was digested'''
     # Done properly, this should be a function of the d18O of the gas, the reaction T,
     # and the cabonate phase of the analysis, but we're sticking to 90C calcite for now'''
 
     vsmow_18O=0.0020052
     vpdb_18O = 0 #don't know this right now
-    d18O_vpdb = (acq.d18O_gas-30.86)/1.03086
-    d18O_min = ((d18O_vpdb+1000)/1.00821)-1000
+    rxnFrac = {'calcite_90': 1.00821, 'calcite_50': 1.0093, 'calcite_25': 1.01025,
+    'dolomite_25': 1.01178, 'dolomite_50': 1.01038, 'dolomite_90': 1.009218, 'dolomite_100':1.00913, 'gas_25': 1.0}
+
+    # calcite fractionations from swart et al., 1991
+    # dolomite fractionations from Rosenbaum and sheppard, 1986
+    # dolomite 90 is an interpotalion from 2nd-order polynomial fit of R&S data
+
+    rxnKey = instance.mineral + '_' + str(instance.rxnTemp)
+
+    d18O_vpdb = (instance.d18O_gas-30.86)/1.03086
+    d18O_min = ((d18O_vpdb+1000)/rxnFrac[rxnKey])-1000
     return d18O_min
 
 
@@ -466,19 +492,19 @@ def FlatList_exporter(analyses,fileName, displayProgress = False):
     export=open(fileName + '.csv','wb')
     wrt=csv.writer(export,dialect='excel')
     wrt.writerow(['User','date','Type','Sample ID','spec #\'s', 'acqs', 'd13C (vpdb)','d13C_stdev','d18O_gas (vsmow)','d18O_mineral (vpdb)',
-    'd18O_stdev','d47','d47_stdev','D47 (v. Oz)','D47_stdev','D47_sterr','d48', 'd48_stdev','D48','D48_stdev', 'hg_slope', 'hg_intercept','D47_CRF', 'D47_ARF', 'D47_ARF std error'])
+    'd18O_stdev','d47','d47_stdev','D47 (v. Oz)','D47_stdev','D47_sterr','d48', 'd48_stdev','D48','D48_stdev', 'hg_slope', 'hg_intercept','D47_CRF', 'D47_ARF', 'D47_ARF std error', 'mineral', 'rxnTemp', 'D47_ARF_acid', 'T(C)'])
     counter = 0
     if displayProgress:
         for item in analyses:
             wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
-            item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept, item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all, 3) ])
+            item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept, item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all, 3), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF])
             counter += 1
             if ((counter * 100)*100) % (len(analyses)*100) == 0:
                 print(str((counter*100)/len(analyses)) + '% done')
     else:
         for item in analyses:
             wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
-            item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept, item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all,3) ])
+            item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept, item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all,3), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF])
     export.close()
     return
 
@@ -507,9 +533,9 @@ def CIDS_exporter(analyses, fileName, displayProgress = False):
         for acq in analysis.acqs:
             wrt.writerow(['',acq.d45, acq.d46, acq.d47, acq.d48, acq.D47_raw, acq.D48_raw, acq.d13C, acq.d18O_gas])
         wrt.writerow([])
-        wrt.writerow(['','User','date','Type','Sample ID','spec #\'s','SkipFirstAcq','d13C (vpdb)','d13C_stdev','d18O_gas (vsmow)','d18O_mineral (vpdb)',
+        wrt.writerow(['','User','date','Type','Sample ID','spec #\'s','SkipFirstAcq','mineral','rxnTemp','d13C (vpdb)','d13C_stdev','d18O_gas (vsmow)','d18O_mineral (vpdb)',
         'd18O_stdev','d47','d47_stdev','D47 (v. Oz)','D47_stdev','D47_sterr','d48', 'd48_stdev','D48','D48_stdev'])
-        wrt.writerow(['__SampleSummary__',analysis.user, analysis.date, analysis.type, analysis.name, analysis.num, analysis.skipFirstAcq, analysis.d13C, analysis.d13C_stdev,
+        wrt.writerow(['__SampleSummary__',analysis.user, analysis.date, analysis.type, analysis.name, analysis.num, analysis.skipFirstAcq, analysis.mineral, analysis.rxnTemp,analysis.d13C, analysis.d13C_stdev,
         analysis.d18O_gas, analysis.d18O_min, analysis.d18O_stdev, analysis.d47, analysis.d47_stdev, analysis.D47_raw,
         analysis.D47_stdev, analysis.D47_sterr, analysis.d48, analysis.d48_stdev, analysis.D48_raw, analysis.D48_stdev])
         wrt.writerow(24*['---',])
@@ -561,6 +587,12 @@ def CIDS_importer(filePath, displayProgress = False):
             [analyses[-1].user, analyses[-1].date, analyses[-1].type, analyses[-1].name] = line[summaryIndex + 1:summaryIndex+5]
             analyses[-1].num = int(line[summaryIndex + 5])
             analyses[-1].skipFirstAcq = bool(line[summaryIndex + 6])
+            if line[summaryIndex + 7] in ['calcite', 'dolomite', 'gas']:
+                analyses[-1].mineral = line[summaryIndex + 7]
+            if line[summaryIndex + 8] in ['90', '25', '50', '100']:
+                analyses[-1].rxnTemp = int(line[summaryIndex + 8])
+
+
 
     fileImport.close()
     return analyses
@@ -807,9 +839,13 @@ def Get_types_auto(analyses):
                 elif ('boc' in name):
                     if ('25' in name):
                         analyses[i].type = 'eg'
+                        analyses[i].rxnTemp = 25
+                        analyses[i].mineral = 'gas'
                         continue
                     elif (len(name) < 10):
                         analyses[i].type = 'hg'
+                        analyses[i].rxnTemp = 25
+                        analyses[i].mineral = 'gas'
                         continue
                 else:
                     analyses[i].type = 'sample'
@@ -829,8 +865,12 @@ def Get_types_manual(analyses):
             typeChoice = raw_input('Type for: ' + analyses[i].name + ' -> (e)g, (h)g, (s)ample, or s(t)d?').lower()
             if typeChoice == 'e':
                 analyses[i].type = 'eg'
+                analyses[i].rxnTemp = 25
+                analyses[i].mineral = 'gas'
             elif typeChoice == 'h':
                 analyses[i].type = 'hg'
+                analyses[i].rxnTemp = 25
+                analyses[i].mineral = 'gas'
             elif typeChoice == 't':
                 analyses[i].type = 'std'
             else:
@@ -956,7 +996,8 @@ def CI_48_excess_checker(analyses, showFigures = False):
 def CI_CRF_corrector(analysis, objName):
     '''Function to apply the heated gas correction in the Caltech Ref Frame'''
 
-    acid_digestion_correction = 0.081
+    acid_correction_dict = {'90': 0.081, '50': 0.040, '25': 0.0}
+    acid_digestion_correction = acid_correction_dict[str(analysis.rxnTemp)]
     try:
         D47_hg_corrected = analysis.D47_raw - (analysis.d47*hg_slope + hg_intercept)
         D47_stretching = D47_hg_corrected *(-0.8453)/hg_intercept
@@ -965,6 +1006,64 @@ def CI_CRF_corrector(analysis, objName):
         return(np.NaN)
 
     return(D47_CRF)
+
+def CI_ARF_acid_corrector(analysis, objName):
+    '''Function to apply the acid correction to an arf value'''
+    acid_correction_dict = {'90': 0.092, '50': 0.040, '25': 0.0}
+    acid_digestion_correction = acid_correction_dict[str(analysis.rxnTemp)]
+    try:
+        D47_ARF_acid = analysis.D47_ARF + acid_digestion_correction
+    except NameError:
+        return(np.NaN)
+
+    return(D47_ARF_acid)
+
+def CI_temp_calibrations(analysis, objName):
+    '''Function to apply a temperature calibration'''
+    #for now, just doing the boniface + Henkes ARF calibration
+    T = np.sqrt(0.0421e6/(analysis.D47_ARF_acid - 0.211)) - 273.15
+    return(T)
+
+def CI_D47_to_temp_ARF(D47_ARF_acid):
+    '''Function to apply a temperature calibration'''
+    #for now, just doing the boniface + Henkes ARF calibration
+    T = np.sqrt(0.0421e6/(D47_ARF_acid - 0.211)) - 273.15
+    return(T)
+
+def CI_D47_to_temp_CRF(D47_CRF_acid):
+    '''Function to apply a temperature calibration'''
+    # stolper 2015 CRF calibration
+    a = 1.006e-3
+    b = 2.620e-2
+    c = 0.2185-D47_CRF_acid
+    TKe6 = (-b +np.sqrt(b**2-4*a*c))/(2*a)
+    T_C = np.sqrt(1e6/TKe6)-273.15
+    return(T_C)
+
+
+
+def CI_water_calibration(d18O_min, T_C):
+    '''Function to determine d18O of the water from which calcite crystallized
+    Using the Kim and O'Neil 1997 calibration line
+    Note, only valid from 10-40 C'''
+
+    #for now, just doing the boniface + Henkes ARF calibration
+    d18O_min_vsmow = d18O_min*1.03086 + 30.86
+    R18_vsmow = 0.0020052
+    R18_min = (d18O_min_vsmow/1000+1)*R18_vsmow
+    T_K = T_C + 273.15
+    # The Kim and Oneil 1997 equation:
+    alpha_calcite_H2O = np.exp(((18.03*(1e3/T_K)-32.42)/1000))
+    R18_H2O = R18_min/alpha_calcite_H2O
+    d18O_H2O_vsmow = (R18_H2O/R18_vsmow-1)*1000
+
+    return(d18O_H2O_vsmow)
+
+
+
+
+
+
 
 def CI_hg_values(instance, objName):
     '''Placeholder for hg slope and int when used in CI classes'''
@@ -1009,14 +1108,18 @@ def Daeron_data_processer(analyses, showFigures = False):
 
     return
 
-def ExportSequence(analyses):
+def ExportSequence(analyses, pbl = False):
     '''Most common export sequence'''
     print('Exporting to temporary CIDS and FlatList files ')
     print('Exporting full acqs to a CIDS sheet...')
     exportNameCIDS = 'autoCIDS_Export'
+    if pbl:
+        exportNameCIDS += '_pblCorr'
     CIDS_exporter(analyses, exportNameCIDS)
     print('Exporting analyses to a flatlist...')
     exportNameFlatlist = 'autoFlatListExport'
+    if pbl:
+        exportNameFlatlist += '_pblCorr'
     FlatList_exporter(analyses,exportNameFlatlist)
     print('Analyses successfully exported')
     doDaeron = raw_input('Export analyses for a Daeron-style ARF reduction (y/n)? ')
@@ -1072,6 +1175,78 @@ def Set_mass_47_pbl(pblSlope):
     global mass47PblSlope
     mass47PblSlope = pblSlope
     # mass47PblIntercept = pblIntercept
+
+
+def D47_mixing(x_1, d13C_1, d18O_1, D47_1, x_2, d13C_2, d18O_2, D47_2):
+    ''' Mixing between two endmembers, in concentrations, assuming d13C in vpdb and d18O in vsmow'''
+
+    vpdb_13C=0.0112372 # values copied from CIDS spreadsheet
+    vsmow_18O=0.0020052
+    vsmow_17O=0.0003799
+    lambda_17=0.5164
+
+    R13_1=(d13C_1/1000+1)*vpdb_13C
+    R18_1=(d18O_1/1000+1)*vsmow_18O
+    R17_1=np.power((R18_1/vsmow_18O),lambda_17)*vsmow_17O
+
+    R13_2=(d13C_2/1000+1)*vpdb_13C
+    R18_2=(d18O_2/1000+1)*vsmow_18O
+    R17_2=np.power((R18_2/vsmow_18O),lambda_17)*vsmow_17O
+
+
+    # calculating stochastic ratios
+    # to keep things organized and avoid repetetive code lines,
+    # organizing calculations in arrays where item 1 is sample gas, item 2 is ref gas
+    R13=np.array([R13_1, R13_2])
+    R17=np.array([R17_1, R17_2])
+    R18=np.array([R18_1, R18_2])
+
+    x = np.array([x_1, x_2])
+
+
+    R45_stoch=R13+2*R17
+    R46_stoch=2*R13*R17+R17*R17+2*R18
+    R47_stoch=2*R13*R18+2*R17*R18+R13*R17*R17
+    R48_stoch=2*R17*R18*R13+R18*R18
+    R49_stoch=R13*R18*R18
+
+    R47 = (np.array([D47_1, D47_2])/1000 + 1)*R47_stoch
+
+    c12 = 1/(1+R13)
+    c13 = c12*R13
+    c16 = 1/(1+R17+R18)
+    c17 = R17*c16
+    c18 = R18*c16
+
+    c44 = c12*c16*c16
+    c47 = R47*c44
+
+    c12_m = np.sum(c12*x)
+    c13_m = np.sum(c13*x)
+    c16_m = np.sum(c16*x)
+    c17_m = np.sum(c17*x)
+    c18_m = np.sum(c18*x)
+
+    c44_m = c12_m*c16_m*c16_m
+    c47_m = np.sum(c47*x)
+
+    R13_m = c13_m/c12_m
+    R17_m = c17_m/c16_m
+    R18_m = c18_m/c16_m
+
+    R47_m_stoch = 2*R13_m*R18_m+2*R17_m*R18_m+R13_m*R17_m*R17_m
+
+    D47_m = (c47_m/c44_m/R47_m_stoch-1)*1000
+    d13C_m = (R13_m/vpdb_13C-1)*1000
+    d18O_m = (R18_m/vsmow_18O-1)*1000
+
+    return(d13C_m,d18O_m,D47_m)
+
+
+
+
+
+
 
 
 
