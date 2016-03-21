@@ -22,6 +22,9 @@ TV03_ARF = 0.635 + 0.092
 global mass47PblSlope
 mass47PblSlope = 0
 
+global CarraraCorrection
+CarraraCorrection = 0.0
+
 
 class CI_VALUE(object):
     '''subclass defining how important isotopic ratios are calculated, and d18O_mineral'''
@@ -79,6 +82,8 @@ class CI_CORRECTED_VALUE(object):
             return np.around(CI_ARF_acid_corrector(instance, self.name),3)
         elif self.name in ['T_D47_ARF']:
             return np.around(CI_temp_calibrations(instance, self.name),2)
+        elif self.name in ['D47_ARF_stdCorr']:
+            return np.around(Carrara_carbonate_correction_ARF(instance, self.name), 3)
 
         else:
             raise ValueError('Sample D47_raw is out of range')
@@ -180,6 +185,7 @@ class CI(object):
 
     D47_ARF_acid = CI_CORRECTED_VALUE('D47_ARF_acid')
     T_D47_ARF = CI_CORRECTED_VALUE('T_D47_ARF')
+    D47_ARF_stdCorr = CI_CORRECTED_VALUE('D47_ARF_stdCorr')
 
 
 
@@ -229,7 +235,7 @@ def carb_gas_oxygen_fractionation_acq(instance):
     vsmow_18O=0.0020052
     vpdb_18O = 0 #don't know this right now
     rxnFrac = {'calcite_90': 1.00821, 'calcite_50': 1.0093, 'calcite_25': 1.01025,
-    'dolomite_25': 1.01178, 'dolomite_50': 1.01038, 'dolomite_90': 1.009218, 'dolomite_100':1.00913, 'gas_25': 1.0}
+    'dolomite_25': 1.01178, 'dolomite_50': 1.01038, 'dolomite_90': 1.009218, 'dolomite_100':1.00913, 'gas_25': 1.0, 'gas_90': 1.0}
 
     # calcite fractionations from swart et al., 1991
     # dolomite fractionations from Rosenbaum and sheppard, 1986
@@ -470,6 +476,12 @@ def CIDS_cleaner(analyses):
     else:
         print 'analyses with too few acqs are:'
         print '\n'.join(['Sample '+ str(k.num)+ ': '+ k.name +' has ' + str(len(k.acqs)) + ' acquisitions' for k in lowAcqs])
+        print 'deleting those with just one acq...'
+        for i in lowAcqs:
+            if len(i.acqs) < 3:
+                analyses.remove(i)
+
+
 
     # converting the voltages and backgrounds to arrays so that they can be easily used to do calculations
     for i in range(len(analyses)):
@@ -492,19 +504,21 @@ def FlatList_exporter(analyses,fileName, displayProgress = False):
     export=open(fileName + '.csv','wb')
     wrt=csv.writer(export,dialect='excel')
     wrt.writerow(['User','date','Type','Sample ID','spec #\'s', 'acqs', 'd13C (vpdb)','d13C_stdev','d18O_gas (vsmow)','d18O_mineral (vpdb)',
-    'd18O_stdev','d47','d47_stdev','D47 (v. Oz)','D47_stdev','D47_sterr','d48', 'd48_stdev','D48','D48_stdev', 'hg_slope', 'hg_intercept','D47_CRF', 'D47_ARF', 'D47_ARF std error', 'mineral', 'rxnTemp', 'D47_ARF_acid', 'T(C)'])
+    'd18O_stdev','d47','d47_stdev','D47 (v. Oz)','D47_stdev','D47_sterr','d48', 'd48_stdev','D48','D48_stdev', 'hg_slope', 'hg_intercept','D47_CRF', 'D47_ARF', 'D47_ARF std error', 'mineral', 'rxnTemp', 'D47_ARF_acid', 'T(C)', 'D47_ARF_stdCorr', 'D48_excess'])
     counter = 0
     if displayProgress:
         for item in analyses:
             wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
-            item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept, item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all, 3), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF])
+            item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept,
+            item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all, 3), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF, item.D47_ARF_stdCorr, item.D48_excess])
             counter += 1
             if ((counter * 100)*100) % (len(analyses)*100) == 0:
                 print(str((counter*100)/len(analyses)) + '% done')
     else:
         for item in analyses:
             wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
-            item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept, item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all,3), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF])
+            item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept,
+            item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all,3), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF, item.D47_ARF_stdCorr, item.D48_excess])
     export.close()
     return
 
@@ -951,14 +965,14 @@ def CI_hg_slope_finder(hgs):
 
 def CI_48_excess_checker(analyses, showFigures = False):
     '''Checks for 48 excess using hg slope and int, based on a certain pre-specified tolerance'''
-    D48_excess_tolerance = 1
+    D48_excess_tolerance = 1.0
     hgs = [i for i in analyses if i.type == 'hg']
     hg_slope_48, hg_intercept_48, r_48, sm_48, sb_48, xc_48, yc_, ct_ = lsqcubic(np.asarray([i.d48 for i in hgs]), np.asarray([i.D48_raw for i in hgs]),
     np.asarray([i.d48_stdev for i in hgs]), np.asarray([i.D48_stdev for i in hgs]))
     for i in analyses:
         D48_predicted = i.d48*hg_slope_48 + hg_intercept_48
         D48_excess_value = i.D48_raw - D48_predicted
-        if np.abs(D48_excess_value) > 1:
+        if np.abs(D48_excess_value) > D48_excess_tolerance:
             i.D48_excess = True
             print('D48 excess found for sample: ' + i.name + ', ' + str(i.num))
 
@@ -991,6 +1005,13 @@ def CI_48_excess_checker(analyses, showFigures = False):
     return
 
 
+def Carrara_carbonate_correction_ARF(analysis, objName):
+    ''' Function to apply a linear correction to carbonates based on CIT Carrara'''
+    if analysis.type in ['hg', 'eg']:
+        return(analysis.D47_ARF_acid)
+    else:
+        return(analysis.D47_ARF_acid - CarraraCorrection)
+
 
 
 def CI_CRF_corrector(analysis, objName):
@@ -1021,14 +1042,30 @@ def CI_ARF_acid_corrector(analysis, objName):
 def CI_temp_calibrations(analysis, objName):
     '''Function to apply a temperature calibration'''
     #for now, just doing the boniface + Henkes ARF calibration
-    T = np.sqrt(0.0421e6/(analysis.D47_ARF_acid - 0.211)) - 273.15
-    return(T)
+    # T = np.sqrt(0.0421e6/(D47_ARF_acid - 0.211)) - 273.15
+
+    # New ARF function, based on Stolper 2015, Bonifacie 2011, Guo 2009, and Ghosh 2006 data
+    # projected into ARF using absolute slope
+    a = 0.00108331
+    b = 0.0285392
+    c = 0.258652-analysis.D47_ARF_acid
+    TKe6 = (-b +np.sqrt(b**2-4*a*c))/(2*a)
+    T_C = np.sqrt(1e6/TKe6)-273.15
+    return(T_C)
 
 def CI_D47_to_temp_ARF(D47_ARF_acid):
     '''Function to apply a temperature calibration'''
     #for now, just doing the boniface + Henkes ARF calibration
-    T = np.sqrt(0.0421e6/(D47_ARF_acid - 0.211)) - 273.15
-    return(T)
+    # T = np.sqrt(0.0421e6/(D47_ARF_acid - 0.211)) - 273.15
+
+    # New ARF function, based on Stolper 2015, Bonifacie 2011, Guo 2009, and Ghosh 2006 data
+    # projected into ARF using absolute slope
+    a = 0.00108331
+    b = 0.0285392
+    c = 0.258652-D47_ARF_acid
+    TKe6 = (-b +np.sqrt(b**2-4*a*c))/(2*a)
+    T_C = np.sqrt(1e6/TKe6)-273.15
+    return(T_C)
 
 def CI_D47_to_temp_CRF(D47_CRF_acid):
     '''Function to apply a temperature calibration'''
@@ -1105,6 +1142,14 @@ def Daeron_data_processer(analyses, showFigures = False):
 
     if showFigures:
         xlcor47_modified.plot_data( daeronData, daeronBestFitParams, CorrelationMatrix ,'filename')
+
+    # Calculating CIT Carrara offset
+    stds_Carrara = [i for i in analyses if (i.type == 'std' and 'carrara' in i.name.lower() and not i.D48_excess)]
+    global CarraraCorrection
+    CarraraCorrection = np.mean([i.D47_ARF_acid for i in stds_Carrara]) - CIT_Carrara_ARF
+    print('Carrara Correction is: '+ str(CarraraCorrection))
+
+
 
     return
 

@@ -80,13 +80,16 @@ while True:
             acqList = [i for i in os.listdir(acqFolder) if i.endswith('.did')]
             if len(acqList) == 0:
                 print("No acquisiton files ('.did') found in folder ")
-                quit()
+                break
             acqList=sorted(acqList)
-            startNum = raw_input('Number of first acquisition to be processed: ')
-            stopNum = raw_input('Number of last acquisition to be processed, or (l)ast: ')
+            startNum = raw_input('Number of first acquisition to be processed, or (f)irst: ').lower()
+            stopNum = raw_input('Number of last acquisition to be processed, or (l)ast: ').lower()
             #convert to int first to remove any leading zeros
-            startNum = int(startNum)
-            if stopNum in ['l', 'L', '-1', 'end']:
+            if startNum in ['f', '0', '']:
+                startNum = int(acqList[0].rstrip('.did').replace('Acquisition-',''))
+            else:
+                startNum = int(startNum)
+            if stopNum in ['l', '-1', 'end', '']:
                 stopNum = int(acqList[-1].rstrip('.did').replace('Acquisition-',''))
             else:
                 stopNum = int(stopNum)
