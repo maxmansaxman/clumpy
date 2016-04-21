@@ -458,7 +458,7 @@ def CIDS_parser(filePath):
     return analyses
 
 
-def CIDS_cleaner(analyses):
+def CIDS_cleaner(analyses, checkForOutliers = True):
     '''function for cleaning up a parsed CIDS file and alerting to any corrupted analyses'''
 
     # Cleaning up the parsed file
@@ -494,9 +494,62 @@ def CIDS_cleaner(analyses):
                 (analyses[i].acqs[j].d13C,analyses[i].acqs[j].d18O_gas) = np.around((analyses[i].acqs[j].d13C,analyses[i].acqs[j].d18O_gas),3)
 
 
+    Check_for_wrong_acqs(analyses)
     print 'All analyses are cleaned, and voltages converted to arrays'
 
     return analyses
+
+def Check_for_wrong_acqs(analyses, showPlots = True):
+    ''' Checks all analyses for individual acquisions that are clearly incorrect, using Grubbs' (1969) test '''
+    print('Checking for outlier acqs...')
+    sigLimit = 4
+    alpha = 0.01
+    # crit_vals_2sided = np.array([np.nan, 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201])
+    crit_vals_2sided = np.array([np.nan, 63.657, 9.965, 5.841, 4.604, 4.032, 3.707, 3.499, 3.355, 3.250, 3.169, 3.106])
+    for i in range(len(analyses)):
+        # acqs_temp = analyses[i].acqs
+        acqs_temp = analyses[i].acqs[analyses[i].skipFirstAcq:-1]
+        d46_temp = np.asarray([j.d46 for j in acqs_temp])
+        d46_res = np.abs(d46_temp - d46_temp.mean())
+        G_2sided = d46_res.max()/d46_temp.std()
+
+        if G_2sided > crit_vals_2sided[len(d46_temp)]:
+            print('Sample {0} fails Grubbs\' outlier test at acq {1} with {2}-alpha significance'.format(i, np.argmax(d46_res), alpha))
+            if showPlots:
+                fig2, ax2 = plt.subplots(4)
+                acq_temp = acqs_temp[np.argmax(d46_res)]
+                voltLabels = ['mass44','mass45', 'mass46', 'mass47']
+                ax2[0].set_title('Voltages for outlier acq number {0}, sample {1}'.format(acq_temp.acqNum, i))
+                for i in range(4):
+                    ax2[i].plot(np.arange(0,8),acq_temp.voltRef[:,i], '-', label = 'ref gas')
+                    ax2[i].plot(np.arange(1,8), acq_temp.voltSam[:,i], '--', label = 'sample gas')
+
+                    ax2[i].set_ylabel('{0} voltage (mV)'.format(voltLabels[i]))
+                ax2[4].set_xlabel('cycle')
+                ax2[0].legend(loc = 'best')
+
+                fig0, ax0 = plt.subplots()
+                # Plot d46
+                ax0.plot(np.asarray(range(len(acqs_temp)))+analyses[i].skipFirstAcq,d46_temp, 'bo')
+                # change axis color to blue
+                ax0.set_ylabel(ur'$\delta 46$', {'color': 'b'})
+                for tl in ax0.get_yticklabels():
+                    tl.set_color('b')
+                # Plot d47
+                ax1 = ax0.twinx()
+                ax1.plot(np.asarray(range(len(acqs_temp)))+analyses[i].skipFirstAcq,[j.d45 for j in acqs_temp], 'rd')
+                # change axis color to red
+                ax1.set_ylabel(ur'$\delta 45$', {'color': 'r'})
+                for tl2 in ax1.get_yticklabels():
+                    tl2.set_color('r')
+                ax0.set_xlabel('cycle')
+
+            delChoice = raw_input('Delete cycle {0}? (y/n) '.format(np.argmax(d46_res))).lower()
+            if delChoice == 'y':
+                del analyses[i].acqs[np.argmax(d46_res)+analyses[i].skipFirstAcq]
+            plt.close('all')
+
+    return
 
 def FlatList_exporter(analyses,fileName, displayProgress = False):
     '''Exports a CSV file that is the same format as a traditional flat list'''

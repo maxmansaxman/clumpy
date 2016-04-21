@@ -6,6 +6,8 @@ Mathieu Daëron (mathieu@daeron.fr), August 2014
 '''
 
 import xlrd
+import csv
+import os
 from flask import Flask, request, url_for, render_template
 import numpy as np
 from matplotlib import use
@@ -67,10 +69,11 @@ def read_xls( content ) :
 	'''
 	reads the uploaded xls file and returns a list of measurements
 	'''
-	wb = xlrd.open_workbook( file_contents = content ) # open the contents of the uploaded xls file
+	wb = xlrd.open_workbook(content ) # open the contents of the uploaded xls file
+	# wb = xlrd.open_workbook( file_contents = content ) # open the contents of the uploaded xls file
 	ws = wb.sheet_by_name( wb.sheet_names()[0] ) # get the first worksheet
 	data = []
-	for r in range( ws.nrows )[2:] : # for each row
+	for r in range( ws.nrows )[0:] : # for each row
 		try :
 			# read the cell values:
 			label = str( ws.cell_value( r, 0) )
@@ -88,6 +91,28 @@ def read_xls( content ) :
 		if 'TCO2eq' in d and 'trueD47' not in d :
 			d['trueD47'] = CO2eqD47( d['TCO2eq'] ) # compute equilibrium value from gas T
 	return data, hash( content )
+
+# def write_xls(data):
+# 	'''
+# 	writes xls data
+# 	'''
+# 	wb = xlwt.Workbook()
+# 	ws = wb.add_sheet('Data')
+#
+# 	for d in data:
+# 		ws.write(d['rawD47'], d['corD47'], d['scorD47_all'])
+#
+# 	wb.save('DaeronData.xls')
+# 	return()
+def csv_exporter(data, filename):
+    '''Export the data to a csv file'''
+    export = open(filename, 'wb')
+    wrt = csv.writer(export, dialect='excel')
+    for item in data:
+        wrt.writerow([item['label'], item['rawD47'], item['corD47'], item['scorD47_all']])
+    export.close()
+    return
+
 
 
 
@@ -279,23 +304,32 @@ def plot_data( data, f, CM, filename ) :
 
 
 
+#
+# app = Flask(__name__)
+#
+# def allowed_file(filename):
+# 	return '.' in filename and filename.rsplit('.', 1)[1] in ['xls']
+#
+# @app.route('/', methods=['GET', 'POST'])
+# def upload_file():
+# 	if request.method == 'POST':
+# 		file = request.files['file']
+# 		if file and allowed_file(file.filename):
+# 			data, datahash = read_xls( file.read() )
+# 			f,CM = process_data( data )
+# 			plot_path, text_output = plot_data( data, f, CM, datahash )
+# 			return render_template( 'output.html', plot_path = plot_path, lendata = '%d' %(len(data)+20), text_output = text_output )
+# 	return render_template( 'input.html' )
+#
+# if __name__ == '__main__' :
+# 	app.debug = True
+# 	app.run()
 
-app = Flask(__name__)
-
-def allowed_file(filename):
-	return '.' in filename and filename.rsplit('.', 1)[1] in ['xls']
-
-@app.route('/', methods=['GET', 'POST'])
-def upload_file():
-	if request.method == 'POST':
-		file = request.files['file']
-		if file and allowed_file(file.filename):
-			data, datahash = read_xls( file.read() )
-			f,CM = process_data( data )
-			plot_path, text_output = plot_data( data, f, CM, datahash )
-			return render_template( 'output.html', plot_path = plot_path, lendata = '%d' %(len(data)+20), text_output = text_output )
-	return render_template( 'input.html' )
-
-if __name__ == '__main__' :
-	app.debug = True
-	app.run()
+# 
+# fileName = raw_input('Filepath ').strip()
+# filePath = fileName.strip('"')
+# filePath = os.path.abspath(filePath)
+# data, datahash = read_xls(filePath)
+# f,CM = process_data( data )
+# # plot_path, text_output = plot_data( data, f, CM, datahash )
+# csv_exporter(data, 'DaeronData.csv')
