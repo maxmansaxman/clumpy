@@ -204,6 +204,7 @@ class ACQUISITION(object):
         self.d18Oref = 0
         self.date=''
         self.time=''
+        self.pressureVals = [0,0,0]
         # self.rxnTemp = 90
         # self.mineral = 'calcite'
 
@@ -349,12 +350,23 @@ def Isodat_File_Parser(fileName):
     # Encode as ascii for consistency
     analysisName = analysisName.encode('ascii')
 
-    # 3.4 background values
+    # 3.4 background values, and Pressure values
     #find start of block with background values
-    # startBackground = buff.find('CISLScriptMessageData')
-    # stopBackground = buff.find('CMeasurmentErrors')
-    # #Note incorrect spelling of 'measurement' is intentional
-    # backgroundBlock = buff[startBackground+80:stopBackground].decode('utf-16')
+    startBackground = buff.find('CISLScriptMessageData')
+    stopBackground = buff.find('CMeasurmentErrors')
+    #Note incorrect spelling of 'measurement' is intentional
+    backgroundBlock = buff[startBackground+32:stopBackground].decode('utf-16', errors = 'ignore')
+    # Pulling floats out of block
+    backgroundVals = re.findall('[0-9]{1,20}\.[0-9]{1,10}', backgroundBlock)
+    # Only want to take P values if they exist, bc a new acq with Brett's modified code
+    if '100precent' in backgroundBlock:
+        # pressure vals are first, and last two in block
+        pressureVals = [float(backgroundVals[0]), float(backgroundVals[-2]), float(backgroundVals[-1])]
+    else:
+        pressureVals = [0,0,0]
+    # Background vals are other ones, but ignoring these for now
+
+
 
     # 3.5 Date and Time
     # Find the start of Ctime block
@@ -365,7 +377,7 @@ def Isodat_File_Parser(fileName):
     time_str = time.strftime('%m/%d/%Y', time.localtime(time_t_time))
 
 
-    return voltRef_raw, voltSam_raw, d13C_final, d18O_final, d13C_ref, d18O_ref, analysisName, firstAcq, time_str
+    return voltRef_raw, voltSam_raw, d13C_final, d18O_final, d13C_ref, d18O_ref, analysisName, firstAcq, time_str, pressureVals
 
 
 def CIDS_parser(filePath):
@@ -556,12 +568,12 @@ def FlatList_exporter(analyses,fileName, displayProgress = False):
 
     export=open(fileName + '.csv','wb')
     wrt=csv.writer(export,dialect='excel')
-    wrt.writerow(['User','date','Type','Sample ID','spec #\'s', 'acqs', 'd13C (vpdb)','d13C_stdev','d18O_gas (vsmow)','d18O_mineral (vpdb)',
+    wrt.writerow(['User','date','Type','Sample ID','spec #\'s', 'acqs', '100% bellow P (mbar)','d13C (vpdb)','d13C_stdev','d18O_gas (vsmow)','d18O_mineral (vpdb)',
     'd18O_stdev','d47','d47_stdev','D47 (v. Oz)','D47_stdev','D47_sterr','d48', 'd48_stdev','D48','D48_stdev', 'hg_slope', 'hg_intercept','D47_CRF', 'D47_ARF', 'D47_ARF std error', 'mineral', 'rxnTemp', 'D47_ARF_acid', 'T(C)', 'D47_ARF_stdCorr', 'D48_excess'])
     counter = 0
     if displayProgress:
         for item in analyses:
-            wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
+            wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.acqs[0].pressureVals[0],item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
             item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept,
             item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all, 3), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF, item.D47_ARF_stdCorr, item.D48_excess])
             counter += 1
@@ -569,7 +581,7 @@ def FlatList_exporter(analyses,fileName, displayProgress = False):
                 print(str((counter*100)/len(analyses)) + '% done')
     else:
         for item in analyses:
-            wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
+            wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.acqs[0].pressureVals[0],item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
             item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept,
             item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all,3), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF, item.D47_ARF_stdCorr, item.D48_excess])
     export.close()
@@ -591,9 +603,9 @@ def CIDS_exporter(analyses, fileName, displayProgress = False):
                 wrt.writerow(['',''] + acq.voltSam[i,:].tolist() + acq.voltRef[i+1,:].tolist())
             wrt.writerow([])
             wrt.writerow(['','acq num','date','ref gas d13C','ref gas d18O','name','type','d13C (vpdb)',
-            'd18O_gas (vsmow)', 'd45','d46','d47', 'd48', 'D47_raw', 'D48_raw'])
+            'd18O_gas (vsmow)', 'd45','d46','d47', 'd48', 'D47_raw', 'D48_raw','100% bellow P','16V sample P','16V wg P'])
             wrt.writerow(['__AcqInfo__',acq.acqNum, acq.date, acq.d13Cref, acq.d18Oref, analysis.name, analysis.type, acq.d13C,
-            acq.d18O_gas, acq.d45, acq.d46, acq.d47, acq.d48, acq.D47_raw, acq.D48_raw])
+            acq.d18O_gas, acq.d45, acq.d46, acq.d47, acq.d48, acq.D47_raw, acq.D48_raw,acq.pressureVals[0],acq.pressureVals[1], acq.pressureVals[2]])
 
         wrt.writerow([])
         wrt.writerow(['', 'd45','d46','d47','d48','D47_raw','D48_raw','d13C','d18O_gas'])
@@ -648,6 +660,12 @@ def CIDS_importer(filePath, displayProgress = False):
             analyses[-1].acqs[-1].d18O_gas = float(line[acqIndex + 8])
             analyses[-1].acqs[-1].voltRef_raw = np.asarray(analyses[-1].acqs[-1].voltRef_raw)
             analyses[-1].acqs[-1].voltSam_raw = np.asarray(analyses[-1].acqs[-1].voltSam_raw)
+            try:
+                analyses[-1].acqs[-1].pressureVals[0] = float(line[acqIndex + 15])
+                analyses[-1].acqs[-1].pressureVals[1] = float(line[acqIndex + 16])
+                analyses[-1].acqs[-1].pressureVals[2] = float(line[acqIndex + 17])
+            except(IndexError):
+                pass
             continue
         if '__SampleSummary__' in line:
             summaryIndex = line.index('__SampleSummary__')
@@ -1117,7 +1135,10 @@ def CI_D47_to_temp_ARF(D47_ARF_acid):
     b = 0.0285392
     c = 0.258652-D47_ARF_acid
     TKe6 = (-b +np.sqrt(b**2-4*a*c))/(2*a)
-    T_C = np.sqrt(1e6/TKe6)-273.15
+    if TKe6 > 0:
+        T_C = np.sqrt(1e6/TKe6)-273.15
+    else:
+        T_C = np.nan
     return(T_C)
 
 def CI_D47_to_temp_CRF(D47_CRF_acid):
@@ -1127,7 +1148,10 @@ def CI_D47_to_temp_CRF(D47_CRF_acid):
     b = 2.620e-2
     c = 0.2185-D47_CRF_acid
     TKe6 = (-b +np.sqrt(b**2-4*a*c))/(2*a)
-    T_C = np.sqrt(1e6/TKe6)-273.15
+    if TKe6 > 0:
+        T_C = np.sqrt(1e6/TKe6)-273.15
+    else:
+        T_C = np.nan
     return(T_C)
 
 
