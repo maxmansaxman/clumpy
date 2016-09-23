@@ -204,7 +204,7 @@ class ACQUISITION(object):
         self.d18Oref = 0
         self.date=''
         self.time=''
-        self.pressureVals = [0,0,0]
+        self.pressureVals = [np.nan,np.nan,np.nan]
         # self.rxnTemp = 90
         # self.mineral = 'calcite'
 
@@ -227,6 +227,27 @@ class ACQUISITION(object):
     voltRef = CI_VOLTAGE('voltRef')
 
 
+def defliese_acid_equation(T_c):
+    ''' calculates the will defliese phosphoric acid equation'''
+    T_k = T_c + 273.15
+    m = 0.022434
+    m_err = 0.001490
+    b = -0.25424
+    b_err = 0.0168
+    ln_alpha = m*10**6/T_k**2 + b
+
+    return(ln_alpha)
+
+def murray_acid_equation(T_c):
+    ''' calculates the will defliese phosphoric acid equation'''
+    T_k = T_c + 273.15
+    m = 0.041757
+    m_err = 0.011195
+    b = -0.469746
+    b_err = 0.034347
+    ln_alpha = m*10**6/T_k**2 + b
+
+    return(ln_alpha)
 
 def carb_gas_oxygen_fractionation_acq(instance):
     '''calculates the d18O of a carbonate mineral from which the CO2 was digested'''
@@ -363,7 +384,7 @@ def Isodat_File_Parser(fileName):
         # pressure vals are first, and last two in block
         pressureVals = [float(backgroundVals[0]), float(backgroundVals[-2]), float(backgroundVals[-1])]
     else:
-        pressureVals = [0,0,0]
+        pressureVals = [np.nan,np.nan,np.nan]
     # Background vals are other ones, but ignoring these for now
 
 
@@ -664,7 +685,7 @@ def CIDS_importer(filePath, displayProgress = False):
                 analyses[-1].acqs[-1].pressureVals[0] = float(line[acqIndex + 15])
                 analyses[-1].acqs[-1].pressureVals[1] = float(line[acqIndex + 16])
                 analyses[-1].acqs[-1].pressureVals[2] = float(line[acqIndex + 17])
-            except(IndexError):
+            except(IndexError, ValueError):
                 pass
             continue
         if '__SampleSummary__' in line:
@@ -1140,6 +1161,20 @@ def CI_D47_to_temp_ARF(D47_ARF_acid):
     else:
         T_C = np.nan
     return(T_C)
+
+def CI_temp_to_D47_ARF(T_C):
+    '''Function to apply a temperature calibration'''
+    #for now, just doing the boniface + Henkes ARF calibration
+    # T = np.sqrt(0.0421e6/(D47_ARF_acid - 0.211)) - 273.15
+
+    # New ARF function, based on Stolper 2015, Bonifacie 2011, Guo 2009, and Ghosh 2006 data
+    # projected into ARF using absolute slope
+    a = 0.00108331
+    b = 0.0285392
+    c = 0.258652
+    TKe6 = 1e6/(T_C+273.15)**2
+    D47_ARF_acid = a*TKe6**2+b*TKe6+c
+    return(D47_ARF_acid)
 
 def CI_D47_to_temp_CRF(D47_CRF_acid):
     '''Function to apply a temperature calibration'''
