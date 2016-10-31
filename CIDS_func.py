@@ -27,7 +27,7 @@ CarraraCorrection = 0.0
 
 
 class CI_VALUE(object):
-    '''subclass defining how important isotopic ratios are calculated, and d18O_mineral'''
+    '''subclass defining how important isotopic ratios are calculated, and d18O_mineral, and brand (2010)-style d13C and d18O calcs'''
 
     def __init__(self, name):
         self.name = name
@@ -36,8 +36,8 @@ class CI_VALUE(object):
         if len(instance.voltRef)>6:
             if self.name in ['d45', 'd46', 'd47', 'd48', 'D47_raw', 'D48_raw']:
                 return np.around(D47_calculation_valued(instance, self.name),3)
-            # elif self.name in ['d18O_min']:
-                # return carb_gas_oxygen_fractionation_acq(instance)
+            elif self.name in ['d13C_brand', 'd18O_brand']:
+                return np.around(bulk_comp_brand_2010(instance, self.name),3)
 
     def __set__(self, obj, value):
         raise AttributeError('Cannot change CI calculation scheme')
@@ -222,6 +222,8 @@ class ACQUISITION(object):
     d47=CI_VALUE('d47')
     D48_raw=CI_VALUE('D48_raw')
     d48=CI_VALUE('d48')
+    d13C_brand = CI_VALUE('d13C_brand')
+    d18O_brand = CI_VALUE('d18O_brand')
     # d18O_min = CI_VALUE('d18O_min')
     voltSam = CI_VOLTAGE('voltSam')
     voltRef = CI_VOLTAGE('voltRef')
@@ -792,6 +794,15 @@ def Pressure_Baseline_Processer(fileFolder):
 
 
     return int44, int49, minimums
+def bulk_comp_brand_2010(acq, objName):
+    ''' Brand 2010 style calculation of bulk composition'''
+    a = 0.528
+    K = 0.01022461
+    vpdb_13C = 0.011180
+    vpdb_18O = 0.00208835
+    
+
+
 
 def D47_calculation_valued(acq, objName):
     '''Performs all the clumped isotope calculations for a single acq'''
@@ -1152,9 +1163,12 @@ def CI_D47_to_temp_ARF(D47_ARF_acid):
 
     # New ARF function, based on Stolper 2015, Bonifacie 2011, Guo 2009, and Ghosh 2006 data
     # projected into ARF using absolute slope
-    a = 0.00108331
-    b = 0.0285392
-    c = 0.258652-D47_ARF_acid
+    # a = 0.00108331
+    # b = 0.0285392
+    # c = 0.258652-D47_ARF_acid
+    a = 0.001083
+    b = 0.02854
+    c = 0.25865-D47_ARF_acid
     TKe6 = (-b +np.sqrt(b**2-4*a*c))/(2*a)
     if TKe6 > 0:
         T_C = np.sqrt(1e6/TKe6)-273.15
