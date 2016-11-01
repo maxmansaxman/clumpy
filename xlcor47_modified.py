@@ -78,18 +78,18 @@ def read_xls( content ) :
 			# read the cell values:
 			label = str( ws.cell_value( r, 0) )
 			d47 = float( ws.cell_value( r, 1) )
-			rawD47 = float( ws.cell_value( r, 2) )
-			srawD47 = float( ws.cell_value( r, 3) )
-			data.append( {'label': label, 'd47': d47, 'rawD47': rawD47, 'srawD47': srawD47 } )
+			D47raw = float( ws.cell_value( r, 2) )
+			D47_raw_sterr = float( ws.cell_value( r, 3) )
+			data.append( {'label': label, 'd47': d47, 'D47raw': D47raw, 'D47_raw_sterr': D47_raw_sterr } )
 			if ws.cell_type( r, 4) == 2 :
 				data[-1]['TCO2eq'] = float( ws.cell_value( r, 4) )
 			if ws.cell_type( r, 5) == 2 :
-				data[-1]['trueD47'] = float( ws.cell_value( r, 5) )
+				data[-1]['D47nominal'] = float( ws.cell_value( r, 5) )
 		except :
 			pass
 	for d in data :
-		if 'TCO2eq' in d and 'trueD47' not in d :
-			d['trueD47'] = CO2eqD47( d['TCO2eq'] ) # compute equilibrium value from gas T
+		if 'TCO2eq' in d and 'D47nominal' not in d :
+			d['D47nominal'] = CO2eqD47( d['TCO2eq'] ) # compute equilibrium value from gas T
 	return data, hash( content )
 
 # def write_xls(data):
@@ -100,7 +100,7 @@ def read_xls( content ) :
 # 	ws = wb.add_sheet('Data')
 #
 # 	for d in data:
-# 		ws.write(d['rawD47'], d['corD47'], d['scorD47_all'])
+# 		ws.write(d['D47raw'], d['corD47'], d['scorD47_all'])
 #
 # 	wb.save('DaeronData.xls')
 # 	return()
@@ -109,7 +109,7 @@ def csv_exporter(data, filename):
     export = open(filename, 'wb')
     wrt = csv.writer(export, dialect='excel')
     for item in data:
-        wrt.writerow([item['label'], item['rawD47'], item['corD47'], item['scorD47_all']])
+        wrt.writerow([item['label'], item['D47raw'], item['corD47'], item['scorD47_all']])
     export.close()
     return
 
@@ -122,15 +122,15 @@ def process_data( data, be_conservative = True ) :
 	into absolute reference frame values, using the following
 	formulation:
 
-		rawD47 = a * trueD47 + b * d47 + c
+		D47raw = a * D47nominal + b * d47 + c
 
 	The parameters (a,b,c) are computed using a LS fit of all
 	the equilibrated gas and carbonate standard measurements.
 	'''
 	# design matrix:
-	A = [ [ d['trueD47'] / d['srawD47'], d['d47'] / d['srawD47'], d['srawD47']**-1 ] for d in data if 'trueD47' in d ]
+	A = [ [ d['D47nominal'] / d['D47_raw_sterr'], d['d47'] / d['D47_raw_sterr'], d['D47_raw_sterr']**-1 ] for d in data if 'D47nominal' in d ]
 	# target values for the fit:
-	Y = [ d['rawD47'] / d['srawD47' ] for d in data if 'trueD47' in d ]
+	Y = [ d['D47raw'] / d['D47_raw_sterr' ] for d in data if 'D47nominal' in d ]
 	A,Y = np.array(A), np.array(Y)
 
 	f = np.linalg.lstsq(A,Y.T)[0] # best-fit parameters
@@ -140,7 +140,7 @@ def process_data( data, be_conservative = True ) :
 		# Scale up uncertainties in the fit parameters if the goodnes-of-fit is worse than average.
 		# To some extent, this helps account for external errors in the gas line data.
 		chi2 = sum( ( Y - np.dot( A, f ) )**2 )
-		nf = len([ d for d in data if 'trueD47' in d ]) - 3
+		nf = len([ d for d in data if 'D47nominal' in d ]) - 3
 		if chi2 > nf :
 			print "be_conservative: errors scaled by %.2f\n" %( chi2 / nf )
 			CM = CM * chi2 / nf
@@ -148,9 +148,9 @@ def process_data( data, be_conservative = True ) :
 	(a,b,c) = f
 	for d in data :
 
-		x = d['rawD47']
+		x = d['D47raw']
 		y = d['d47']
-		sx = d['srawD47']
+		sx = d['D47_raw_sterr']
 		sy = 0.
 		z = x / a - b/a * y - c/a
 		d['corD47'] = z
@@ -205,25 +205,25 @@ def plot_data( data, f, CM, filename ) :
 	for d in data :
 		msmarkers_kwargs = { 'ms':4, 'color':'w', 'mew':1 }
 		errorbar_kwargs = { 'fmt':None, 'capsize':2, 'capthick':1, 'elinewidth':1 }
-		if 'trueD47' in d :
+		if 'D47nominal' in d :
 			color = 'r'
 			marker = 's'
-			mpl.errorbar( d['d47'], d['rawD47'], 2*d['srawD47'], None, ecolor = color, **errorbar_kwargs )
-			mpl.plot( d['d47'], d['rawD47'], marker, mec = color, **msmarkers_kwargs)
+			mpl.errorbar( d['d47'], d['D47raw'], 2*d['D47_raw_sterr'], None, ecolor = color, **errorbar_kwargs )
+			mpl.plot( d['d47'], d['D47raw'], marker, mec = color, **msmarkers_kwargs)
 		else :
 			color = 'b'
 			marker = 'o'
-			mpl.errorbar( d['d47'], d['rawD47'], 2*d['srawD47'], None, ecolor = color, **errorbar_kwargs )
-			mpl.plot( d['d47'], d['rawD47'], marker, mec = color, **msmarkers_kwargs)
+			mpl.errorbar( d['d47'], d['D47raw'], 2*d['D47_raw_sterr'], None, ecolor = color, **errorbar_kwargs )
+			mpl.plot( d['d47'], d['D47raw'], marker, mec = color, **msmarkers_kwargs)
 
 	xleft, xright, ybottom, ytop = mpl.axis()
 	xi = np.linspace( xleft, xright )
 	TCO2eq = list( set( [ d['TCO2eq'] for d in data if 'TCO2eq' in d ] ) )
 	for T in TCO2eq :
-		trueD47 = CO2eqD47( T )
-		yi = a * trueD47 + b * xi + c
+		D47nominal = CO2eqD47( T )
+		yi = a * D47nominal + b * xi + c
 		dydx = b
-		dyda = trueD47
+		dyda = D47nominal
 		dydb = xi
 		dydc = 1.
 		C = CM
@@ -270,19 +270,19 @@ def plot_data( data, f, CM, filename ) :
 	# 	mpl.savefig( '/home/rambaldi/xlcor47/static/' + plot_path, dpi=150 )
 	#
 	# ### SAVE CSV ###
-	# text_output = 'label	d47	rawD47	1SE	TCO2eq	absD47	corD47	SE(total)	SE(internal)	SE(model)\n\n'
+	# text_output = 'label	d47	D47raw	1SE	TCO2eq	absD47	corD47	SE(total)	SE(internal)	SE(model)\n\n'
 	# for d in data :
 	# 	if 'TCO2eq' in d :
-	# 		text_output += '%s	%.4f	%.4f	%.4f	%.1f	%.4f	%.4f	%.4f	%.4f	%.4f\n' % ( d['label'], d['d47'], d['rawD47'], d['srawD47'], d['TCO2eq'], d['trueD47'], d['corD47'], d['scorD47_all'], d['scorD47_internal'], d['scorD47_model'] )
-	# 	elif 'trueD47' in d :
-	# 		text_output += '%s	%.4f	%.4f	%.4f		%.4f	%.4f	%.4f	%.4f	%.4f\n' % ( d['label'], d['d47'], d['rawD47'], d['srawD47'], d['trueD47'], d['corD47'], d['scorD47_all'], d['scorD47_internal'], d['scorD47_model'] )
+	# 		text_output += '%s	%.4f	%.4f	%.4f	%.1f	%.4f	%.4f	%.4f	%.4f	%.4f\n' % ( d['label'], d['d47'], d['D47raw'], d['D47_raw_sterr'], d['TCO2eq'], d['D47nominal'], d['corD47'], d['scorD47_all'], d['scorD47_internal'], d['scorD47_model'] )
+	# 	elif 'D47nominal' in d :
+	# 		text_output += '%s	%.4f	%.4f	%.4f		%.4f	%.4f	%.4f	%.4f	%.4f\n' % ( d['label'], d['d47'], d['D47raw'], d['D47_raw_sterr'], d['D47nominal'], d['corD47'], d['scorD47_all'], d['scorD47_internal'], d['scorD47_model'] )
 	# 	else :
-	# 		text_output += '%s	%.4f	%.4f	%.4f			%.4f	%.4f	%.4f	%.4f\n' % ( d['label'], d['d47'], d['rawD47'], d['srawD47'], d['corD47'], d['scorD47_all'], d['scorD47_internal'], d['scorD47_model'] )
+	# 		text_output += '%s	%.4f	%.4f	%.4f			%.4f	%.4f	%.4f	%.4f\n' % ( d['label'], d['d47'], d['D47raw'], d['D47_raw_sterr'], d['corD47'], d['scorD47_all'], d['scorD47_internal'], d['scorD47_model'] )
 	#
 	# text_output += '\n\n'
 	# text_output += 'MODEL PARAMETERS:\n'
 	# text_output += '-----------------\n'
-	# text_output += 'rawD47 = A * trueD47 + B * d47 + C\n'
+	# text_output += 'D47raw = A * D47nominal + B * d47 + C\n'
 	# text_output += 'A = %.6g\n' % a
 	# text_output += 'B = %.6g\n' % b
 	# text_output += 'C = %.6g\n' % c
@@ -325,7 +325,7 @@ def plot_data( data, f, CM, filename ) :
 # 	app.debug = True
 # 	app.run()
 
-# 
+#
 # fileName = raw_input('Filepath ').strip()
 # filePath = fileName.strip('"')
 # filePath = os.path.abspath(filePath)
