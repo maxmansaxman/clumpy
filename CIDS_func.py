@@ -9,6 +9,7 @@ import os
 import struct
 import time
 import xlcor47_modified
+from scipy.optimize import root
 
 
 
@@ -34,10 +35,10 @@ class CI_VALUE(object):
 
     def __get__(self,instance,cls):
         if len(instance.voltRef)>6:
-            if self.name in ['d45', 'd46', 'd47', 'd48', 'D47_raw', 'D48_raw']:
-                return np.around(D47_calculation_valued(instance, self.name),3)
+            if self.name in ['d45', 'd46', 'd47', 'd48', 'd49','D47_raw', 'D48_raw']:
+                return np.around(D47_calculation_valued(instance, self.name),5)
             elif self.name in ['d13C_brand', 'd18O_brand']:
-                return np.around(bulk_comp_brand_2010(instance, self.name),3)
+                return np.around(bulk_comp_brand_2010(instance, self.name),5)
 
     def __set__(self, obj, value):
         raise AttributeError('Cannot change CI calculation scheme')
@@ -53,11 +54,11 @@ class CI_AVERAGE(object):
 
     def __get__(self,instance,cls):
         if len(instance.acqs)>=1:
-            if self.name in ['d13C','d13C_stdev','d18O_gas','d18O_stdev',
-            'd47','d47_stdev','D47_raw','D47_stdev', 'D47_sterr','d48','d48_stdev','D48_raw','D48_stdev']:
-                return np.around(CI_averages_valued_individual(instance, self.name),3)
+            if self.name in ['d13C','d13C_stdev','d18O_gas','d18O_stdev', 'd45', 'd46', 'd47','d47_stdev',
+            'D47_raw','D47_stdev', 'D47_sterr','d48','d48_stdev', 'd49','D48_raw','D48_stdev', 'd13C_brand', 'd18O_brand']:
+                return np.around(CI_averages_valued_individual(instance, self.name),5)
             elif self.name in ['d18O_min']:
-                return np.around(carb_gas_oxygen_fractionation_acq(instance),3)
+                return np.around(carb_gas_oxygen_fractionation_acq(instance),5)
 
         else:
             raise ValueError('Sample has no acquisitions to average')
@@ -151,6 +152,7 @@ class CI(object):
         self.skipFirstAcq = False
         self.TCO2 = np.nan
         self.D48_excess = False
+        self.useBrand2010 = False
         self.rxnTemp = 90
         self.mineral = 'calcite'
 
@@ -163,6 +165,7 @@ class CI(object):
     d46 = CI_AVERAGE('d46')
     d47 = CI_AVERAGE('d47')
     d48 = CI_AVERAGE('d48')
+    d49 = CI_AVERAGE('d49')
     D47_raw = CI_AVERAGE('D47_raw')
     D48_raw = CI_AVERAGE('D48_raw')
     d13C = CI_AVERAGE('d13C')
@@ -178,6 +181,8 @@ class CI(object):
     D48_stdev = CI_AVERAGE('D48_stdev')
     d13C_stdev = CI_AVERAGE('d13C_stdev')
     d18O_stdev = CI_AVERAGE('d18O_stdev')
+    d13C_brand = CI_AVERAGE('d13C_brand')
+    d18O_brand = CI_AVERAGE('d18O_brand')
 
     D47_CRF = CI_CORRECTED_VALUE('D47_CRF')
     hg_slope = CI_UNIVERSAL_VALUE('hg_slope')
@@ -204,6 +209,7 @@ class ACQUISITION(object):
         self.d18Oref = 0
         self.date=''
         self.time=''
+        self.useBrand2010 = False
         self.pressureVals = [np.nan,np.nan,np.nan]
         # self.rxnTemp = 90
         # self.mineral = 'calcite'
@@ -222,6 +228,7 @@ class ACQUISITION(object):
     d47=CI_VALUE('d47')
     D48_raw=CI_VALUE('D48_raw')
     d48=CI_VALUE('d48')
+    d49 = CI_VALUE('d49')
     d13C_brand = CI_VALUE('d13C_brand')
     d18O_brand = CI_VALUE('d18O_brand')
     # d18O_min = CI_VALUE('d18O_min')
@@ -267,7 +274,7 @@ def carb_gas_oxygen_fractionation_acq(instance):
 
     rxnKey = instance.mineral + '_' + str(instance.rxnTemp)
 
-    d18O_vpdb = (instance.d18O_gas-30.86)/1.03086
+    d18O_vpdb = (instance.d18O_gas-30.92)/1.03092
     d18O_min = ((d18O_vpdb+1000)/rxnFrac[rxnKey])-1000
     return d18O_min
 
@@ -592,13 +599,14 @@ def FlatList_exporter(analyses,fileName, displayProgress = False):
     export=open(fileName + '.csv','wb')
     wrt=csv.writer(export,dialect='excel')
     wrt.writerow(['User','date','Type','Sample ID','spec #\'s', 'acqs', '100% bellow P (mbar)','d13C (vpdb)','d13C_stdev','d18O_gas (vsmow)','d18O_mineral (vpdb)',
-    'd18O_stdev','d47','d47_stdev','D47 (v. Oz)','D47_stdev','D47_sterr','d48', 'd48_stdev','D48','D48_stdev', 'hg_slope', 'hg_intercept','D47_CRF', 'D47_ARF', 'D47_ARF std error', 'mineral', 'rxnTemp', 'D47_ARF_acid', 'T(C)', 'D47_ARF_stdCorr', 'D48_excess'])
+    'd18O_stdev','d47','d47_stdev','D47 (v. Oz)','D47_stdev','D47_sterr','d48', 'd48_stdev','D48','D48_stdev', 'hg_slope', 'hg_intercept','D47_CRF', 'D47_ARF',
+    'D47_ARF std error', 'mineral', 'rxnTemp', 'D47_ARF_acid', 'T(C)', 'D47_ARF_stdCorr', 'D48_excess', 'd13C_brand', 'd18O_brand'])
     counter = 0
     if displayProgress:
         for item in analyses:
             wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.acqs[0].pressureVals[0],item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
             item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept,
-            item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all, 3), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF, item.D47_ARF_stdCorr, item.D48_excess])
+            item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all, 3), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF, item.D47_ARF_stdCorr, item.D48_excess, item.d13C_brand, item.d18O_brand])
             counter += 1
             if ((counter * 100)*100) % (len(analyses)*100) == 0:
                 print(str((counter*100)/len(analyses)) + '% done')
@@ -606,7 +614,7 @@ def FlatList_exporter(analyses,fileName, displayProgress = False):
         for item in analyses:
             wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.acqs[0].pressureVals[0],item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
             item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept,
-            item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all,3), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF, item.D47_ARF_stdCorr, item.D48_excess])
+            item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all,3), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF, item.D47_ARF_stdCorr, item.D48_excess, item.d13C_brand, item.d18O_brand])
     export.close()
     return
 
@@ -752,6 +760,24 @@ def Daeron_exporter(analyses, fileName):
     export.close()
     return
 
+def Daeron_exporter_crunch(analyses, fileName):
+    '''Exports analyses in a csv that is formatted for Matthieu Daeron's online ClumpyCrunch 1.0 script'''
+
+    export=open(fileName +'_daeron'+ '.csv','wb')
+    wrt=csv.writer(export,dialect='excel')
+    wrt.writerow(['ID', 'd45', 'd46', 'd47', 'd48', 'd49', 'sd47', 'D17O', 'd13Cwg_pdb', 'd18Owg_pdbco2', 'D47raw', 'D47_raw_sterr', 'TeqCO2', 'D47nominal'])
+    for item in analyses:
+        if np.isnan(item.TCO2):
+            wrt.writerow([item.name, item.d45, item.d46, item.d47, item.d48, item.d49,
+            item.d47_stdev/np.sqrt(len(item.acqs)-item.skipFirstAcq), 0.0, item.acqs[0].d13Cref, (item.acqs[0].d18Oref - 30.92)/1.03092,
+            item.D47_raw, item.D47_sterr])
+        else :
+            wrt.writerow([item.name, item.d45, item.d46, item.d47, item.d48, item.d49,
+            item.d47_stdev/np.sqrt(len(item.acqs)-item.skipFirstAcq), 0.0, item.acqs[0].d13Cref, (item.acqs[0].d18Oref - 30.92)/1.03092,
+            item.D47_raw, item.D47_sterr, item.TCO2, xlcor47_modified.CO2eqD47(item.TCO2)])
+    export.close()
+    return
+
 
 def Pressure_Baseline_Processer(fileFolder):
     '''Pulls raw intensity data out of a folder of peak scans'''
@@ -798,10 +824,83 @@ def bulk_comp_brand_2010(acq, objName):
     ''' Brand 2010 style calculation of bulk composition'''
     a = 0.528
     K = 0.01022461
-    vpdb_13C = 0.011180
-    vpdb_18O = 0.00208835
-    
+    vpdb_R13 = 0.011180
+    vpdb_R18 = 0.00208835
 
+    vpdb_R17 = K*vpdb_R18**a
+
+    # convert wg d18O to vpdb, using the recommended value of Coplen et al., 1983 (once NBS-19 is corrected to +2.2 permille)
+    d18Oref_vpdb = (acq.d18Oref-30.92)/1.03092
+
+    # Calculate working gas ratios
+    R13_ref=(acq.d13Cref/1000+1)*vpdb_R13
+    R18_ref=(d18Oref_vpdb/1000+1)*vpdb_R18
+    R17_ref=np.power((R18_ref/vpdb_R18),a)*vpdb_R17
+
+    # calculating measured voltage ratios, with sample/ref bracketing
+    R_measured_analysis=(acq.voltSam[:,1:6]/(np.tile(acq.voltSam[:,0],(5,1)).T))
+    R_measured_ref=(acq.voltRef[:,1:6]/(np.tile(acq.voltRef[:,0],(5,1)).T))
+    delta_measured=np.zeros(np.shape(R_measured_analysis)) # Preallocating for size of delta array
+
+    for l in range(len(R_measured_analysis)):
+        delta_measured[l,:]=(R_measured_analysis[l,:]/((R_measured_ref[l,:]+R_measured_ref[l+1,:])/2)-1)*1000
+    # couches ratios in analysis/std bracketing, put in delta notation
+
+    delta_measured_mean=np.zeros((3,delta_measured.shape[1]))
+
+    delta_measured_mean[0,:]=np.mean(delta_measured, axis=0) # averaging for all cycles
+    delta_measured_mean[1,:]=np.std(delta_measured, axis=0,ddof=1)  # standard deviation among all cycles
+    delta_measured_mean[2,:]=delta_measured_mean[1,:]/np.sqrt(len(delta_measured)) # std error among all cycles
+
+    # Calculate ref gas stochastic ratios
+    R45_ref_stoch = R13_ref + 2*R17_ref
+    R46_ref_stoch=2*R13_ref*R17_ref+R17_ref*R17_ref+2*R18_ref
+    R47_ref_stoch=2*R13_ref*R18_ref+2*R17_ref*R18_ref+R13_ref*R17_ref*R17_ref
+    R48_ref_stoch=2*R17_ref*R18_ref*R13_ref+R18_ref*R18_ref
+    R49_ref_stoch=R13_ref*R18_ref*R18_ref
+
+    # assemble into array
+    R_ref_stoch = np.array([R45_ref_stoch, R46_ref_stoch, R47_ref_stoch, R48_ref_stoch, R49_ref_stoch])
+    # multiply by deltas to get 'true' ratios in sample gas. This assumes that wg is stochastic in composition
+    R_measured_mean = (delta_measured_mean[0,:]/1000+1)*R_ref_stoch
+    # assemble extra arguments tuple to pass to solver
+    extraArgs = (R_measured_mean[0:3], a, K,)
+    # inital guess from true ratios of wg. Order is 13C, 17O, 18O
+    R_guess_init = [R13_ref, R17_ref, R18_ref]
+    # Minimize residuals for bulk solver
+    bulk_comp_result = root(bulk_comp_solver, R_guess_init, args = extraArgs, method = 'lm', options = {'xtol':1e-20, 'ftol':1e-20})
+    r13C_brand, r17O_brand, r18O_brand = bulk_comp_result.x
+    d13C_vpdb_brand = (r13C_brand/vpdb_R13 -1)*1000
+    d18O_vpdb_brand = (r18O_brand/vpdb_R18 -1)*1000
+    d18O_vsmow_brand = d18O_vpdb_brand*1.03092 + 30.92
+
+    #assemble dict
+    bulk_comps = {'d13C_brand': d13C_vpdb_brand, 'd18O_brand': d18O_vsmow_brand}
+    return(bulk_comps[objName])
+
+def Brand_2010_bulk_comp_setter(analyses):
+    'sets all acqs bulk comps to the Brand 2010-derived values'
+
+    for i in analyses:
+        i.useBrand2010 = True
+        for j in i.acqs:
+            j.d13C = j.d13C_brand
+            j.d18O_gas = j.d18O_brand
+            j.useBrand2010 = True
+
+    return
+
+def bulk_comp_solver(calcRatios, *extraArgs):
+    ''' function to find roots of bulk compositions'''
+    # unpacking extra args tuple
+    measRatios, a, K = extraArgs
+    # Santrock et al. (1985) eqn 10:
+    R13_residual = calcRatios[0] + 2*calcRatios[1] - measRatios[0]
+    # eqn 11:
+    R18_residual = 2*calcRatios[2] + 2*calcRatios[0]*calcRatios[1] + calcRatios[1]**2 - measRatios[1]
+    # eqn 19:
+    R17_residual = K*calcRatios[2]**a - calcRatios[1]
+    return(R13_residual, R18_residual, R17_residual)
 
 
 def D47_calculation_valued(acq, objName):
@@ -812,13 +911,37 @@ def D47_calculation_valued(acq, objName):
     vsmow_17O=0.0003799
     lambda_17=0.5164
 
-    R13_sa=(acq.d13C/1000+1)*vpdb_13C
-    R18_sa=(acq.d18O_gas/1000+1)*vsmow_18O
-    R17_sa=np.power((R18_sa/vsmow_18O),lambda_17)*vsmow_17O
+    # if using Brand et al. (2010) correction
+    if acq.useBrand2010:
+        # then apply new accepted values
+        lambda_17 = 0.528
+        K = 0.01022461
+        vpdb_13C = 0.011180
+        vpdb_18O = 0.00208835
+        vpdb_17O = K*vpdb_18O**lambda_17
 
-    R13_ref=(acq.d13Cref/1000+1)*vpdb_13C
-    R18_ref=(acq.d18Oref/1000+1)*vsmow_18O
-    R17_ref=np.power((R18_ref/vsmow_18O),lambda_17)*vsmow_17O
+        # convert wg d18O to vpdb, using the recommended value of Coplen et al., 1983 (once NBS-19 is corrected to +2.2 permille)
+        d18Oref_vpdb = (acq.d18Oref-30.92)/1.03092
+
+        # Calculate working gas ratios
+        R13_ref=(acq.d13Cref/1000+1)*vpdb_13C
+        R18_ref=(d18Oref_vpdb/1000+1)*vpdb_18O
+        R17_ref=np.power((R18_ref/vpdb_18O),lambda_17)*vpdb_17O
+
+        d18O_gas_vpdb = (acq.d18O_gas-30.92)/1.03092
+        #
+        R13_sa=(acq.d13C/1000+1)*vpdb_13C
+        R18_sa=(d18O_gas_vpdb/1000+1)*vpdb_18O
+        R17_sa=np.power((R18_sa/vpdb_18O),lambda_17)*vpdb_17O
+
+    else:
+        R13_sa=(acq.d13C/1000+1)*vpdb_13C
+        R18_sa=(acq.d18O_gas/1000+1)*vsmow_18O
+        R17_sa=np.power((R18_sa/vsmow_18O),lambda_17)*vsmow_17O
+
+        R13_ref=(acq.d13Cref/1000+1)*vpdb_13C
+        R18_ref=(acq.d18Oref/1000+1)*vsmow_18O
+        R17_ref=np.power((R18_ref/vsmow_18O),lambda_17)*vsmow_17O
 
     # calculating stochastic ratios
     # to keep things organized and avoid repetetive code lines,
@@ -859,11 +982,12 @@ def D47_calculation_valued(acq, objName):
     d46=delta_measured_mean[0,1]
     d47=delta_measured_mean[0,2]
     d48=delta_measured_mean[0,3]
+    d49=delta_measured_mean[0,4]
     D47_raw=D_raw[2]-D_raw[0]-D_raw[1]
     D48_raw=D_raw[3]-D_raw[0]-D_raw[1]
 
 
-    calculatedCIValues = {'d45': d45, 'd46': d46, 'd47': d47, 'd48': d48, 'D47_raw': D47_raw, 'D48_raw': D48_raw}
+    calculatedCIValues = {'d45': d45, 'd46': d46, 'd47': d47, 'd48': d48, 'd49': d49,'D47_raw': D47_raw, 'D48_raw': D48_raw}
 
     return calculatedCIValues[objName]
 
@@ -872,7 +996,7 @@ def CI_averages_valued_individual(analysis, objName):
     '''Computes the mean, std dev, and std error for every attribute useful for a CI measurement'''
 
     props2=['d13C','d13C_stdev','d18O_gas','d18O_min','d18O_stdev',
-        'd47','d47_stdev','D47_raw','D47_stdev', 'D47_sterr','d48','D48_raw','D48_stdev']
+        'd47','d47_stdev','D47_raw','D47_stdev', 'D47_sterr','d48','D48_raw','D48_stdev', 'd13C_brand', 'd18O_brand']
 
     valName = objName.replace('_stdev','')
 
@@ -1211,7 +1335,7 @@ def CI_water_calibration(d18O_min, T_C):
     Note, only valid from 10-40 C'''
 
     #for now, just doing the boniface + Henkes ARF calibration
-    d18O_min_vsmow = d18O_min*1.03086 + 30.86
+    d18O_min_vsmow = d18O_min*1.03092 + 30.92
     R18_vsmow = 0.0020052
     R18_min = (d18O_min_vsmow/1000+1)*R18_vsmow
     T_K = T_C + 273.15
@@ -1242,14 +1366,15 @@ def Daeron_data_creator(analyses):
     processing script '''
     daeronData = []
     for i in analyses:
-        daeronData.append({'label': i.name, 'd47': i.d47, 'rawD47': i.D47_raw,
-        'srawD47': i.D47_sterr} )
+        daeronData.append({'label': i.name, 'd45': i.d45, 'd46':i.d46,'d47': i.d47, 'd48': i.d48, 'd49': i.d49,
+        'sd47': i.d47_stdev/np.sqrt(len(i.acqs)-i.skipFirstAcq), 'D17O': 0.0, 'd13Cwg_pdb': i.acqs[0].d13Cref, 'd18Owg_pdbco2': (i.acqs[0].d18Oref - 30.92)/1.03092,
+        'D47raw': i.D47_raw, 'D47_raw_sterr': i.D47_sterr} )
         if i.type == 'hg':
             daeronData[-1]['TCO2eq'] = 1000.0
-            daeronData[-1]['trueD47'] = xlcor47_modified.CO2eqD47(1000.0)
+            daeronData[-1]['D47nominal'] = xlcor47_modified.CO2eqD47(1000.0)
         elif i.type == 'eg':
             daeronData[-1]['TCO2eq'] = 25.0
-            daeronData[-1]['trueD47'] = xlcor47_modified.CO2eqD47(25.0)
+            daeronData[-1]['D47nominal'] = xlcor47_modified.CO2eqD47(25.0)
     return(daeronData)
 
 def Daeron_data_processer(analyses, showFigures = False):
@@ -1297,7 +1422,7 @@ def ExportSequence(analyses, pbl = False):
     if doDaeron.lower() == 'y':
         exportNameDaeron = 'autoDaeronExport'
         Get_gases(analyses)
-        Daeron_exporter(analyses,exportNameDaeron)
+        Daeron_exporter_crunch(analyses,exportNameDaeron)
 
     return
 
