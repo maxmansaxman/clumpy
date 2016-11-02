@@ -265,6 +265,9 @@ while True:
 
     if taskChoice == 'P':
         print('Processing data in all relevant reference frames')
+        bulkCompChoice = raw_input('Use Brand et al. (2010) bulk composition calculation? (y/n) ').lower()
+        if bulkCompChoice == 'y':
+            CIDS_func.Brand_2010_bulk_comp_setter(analyses)
         print('Processing data in caltech ref frame')
         CIDS_func.CI_CRF_data_corrector(analyses)
         print('Processing data in absolute ref frame, with the Daeron method')
