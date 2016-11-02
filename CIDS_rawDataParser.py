@@ -121,7 +121,7 @@ while True:
                 # If acq is an AL_Pump_Trans, declare it to be a new sample
 
                 # Catches acqs where enough gas did not make it to the bellows in and skips them
-                if voltSam_raw[-1][0] < 15000:
+                if voltSam_raw[-1][0] < 7000:
                     print('Skipping acq ' + str(acqList[i]) + ' from sample ' + rawSampleName + ' because voltage too low on mass 44: ' + str(voltSam_raw[-1][0]))
                     continue
                 if len(analyses) == 0:
