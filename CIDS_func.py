@@ -152,7 +152,7 @@ class CI(object):
         self.type=''
         self.num=np.nan
         self.user=''
-        self.skipFirstAcq = False
+        self.skipFirstAcq = True
         self.TCO2 = np.nan
         self.D48_excess = False
         self.useBrand2010 = False
