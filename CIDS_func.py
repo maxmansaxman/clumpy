@@ -893,7 +893,7 @@ def Get_carbonate_stds(analyses):
 def Get_gases(analyses):
     '''Finds which analyses are heated and equilibrated gases, and assigns them TCO2 values'''
     # properNames = raw_input("Do all equilibrated gases have '25' in name? (y/n) ").lower()
-    properNames == 'y'
+    properNames = 'y'
     for item in analyses:
         if item.type in ['hg', 'eg']:
             if properNames == 'y':
