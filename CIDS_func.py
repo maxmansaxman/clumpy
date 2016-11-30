@@ -882,6 +882,9 @@ def Get_carbonate_stds(analyses):
                 elif 'gc_az' in item.name.lower():
                     item.TCO2 = ''
                     item.D47nominal = GC_AZ_ARF
+                elif 'tv04' in item.name.lower():
+                    item.TCO2 = ''
+                    item.D47nominal = TV03_ARF
                 else:
                     item.TCO2 = ''
                     item.D47nominal = ''
@@ -893,7 +896,7 @@ def Get_carbonate_stds(analyses):
 def Get_gases(analyses):
     '''Finds which analyses are heated and equilibrated gases, and assigns them TCO2 values'''
     # properNames = raw_input("Do all equilibrated gases have '25' in name? (y/n) ").lower()
-    properNames == 'y'
+    properNames = 'y'
     for item in analyses:
         if item.type in ['hg', 'eg']:
             if properNames == 'y':
@@ -1634,6 +1637,7 @@ def ExportSequence(analyses, pbl = False):
     if doDaeron.lower() == 'y':
         exportNameDaeron = 'autoDaeronExport'
         Get_gases(analyses)
+        Get_carbonate_stds(analyses)
         Daeron_exporter_crunch(analyses,exportNameDaeron)
 
     return
