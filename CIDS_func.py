@@ -16,9 +16,12 @@ from scipy.optimize import root
 
 CIT_Carrara_CRF = 0.352
 TV03_CRF = 0.650
+GC_AZ_CRF = 0.654
 
 CIT_Carrara_ARF = 0.3115 + 0.092
+NBS_19_ARF = CIT_Carrara_ARF
 TV03_ARF = 0.635 + 0.092
+GC_AZ_ARF = 0.710
 
 global mass47PblSlope
 mass47PblSlope = 0
@@ -149,7 +152,7 @@ class CI(object):
         self.type=''
         self.num=np.nan
         self.user=''
-        self.skipFirstAcq = False
+        self.skipFirstAcq = True
         self.TCO2 = np.nan
         self.D48_excess = False
         self.useBrand2010 = False
@@ -273,8 +276,11 @@ def carb_gas_oxygen_fractionation_acq(instance):
     # dolomite 90 is an interpotalion from 2nd-order polynomial fit of R&S data
 
     rxnKey = instance.mineral + '_' + str(instance.rxnTemp)
+    if instance.useBrand2010:
+        d18O_vpdb = (instance.d18O_gas-30.92)/1.03092
+    else:
+        d18O_vpdb = (instance.d18O_gas-30.86)/1.03086
 
-    d18O_vpdb = (instance.d18O_gas-30.92)/1.03092
     d18O_min = ((d18O_vpdb+1000)/rxnFrac[rxnKey])-1000
     return d18O_min
 
@@ -409,6 +415,145 @@ def Isodat_File_Parser(fileName):
 
     return voltRef_raw, voltSam_raw, d13C_final, d18O_final, d13C_ref, d18O_ref, analysisName, firstAcq, time_str, pressureVals
 
+def Isodat_File_Parser_CAF(fileName):
+    '''Reads in a .caf file (Classical aquisition file), returns the raw voltages for
+    ref gas, analysis gas, and the isodat-calculated d13C and d18O of the Acquisition'''
+
+    f=open(fileName,'rb')
+    try:
+        buff = f.read()
+    finally:
+        f.close()
+
+    #1. Getting raw voltage data
+    #Searching for the start of the raw voltages
+    start=buff.find('CDualInletRawData')
+    keys=[]
+    voltRef_raw=[]
+    voltSam_raw=[]
+    #Slightly elegant method: pulling out based on spacing after 'CIntensityData' ascii key
+    # TODO: make this more flexible
+    # TODO: Catch errors if wrong voltage sequence found
+    startPreVolt=start+2304+168 #observed location of 'pre' cycle on ref gas side
+    voltRef_raw.append(struct.unpack('6d',buff[startPreVolt:(startPreVolt+6*8)]))
+    for i in range(7):
+        startRefVolt=start+52+i*164 #observed location of ref gas voltage cycles
+        voltRef_raw.append(struct.unpack('6d',buff[startRefVolt:(startRefVolt+6*8)]))
+
+        startSamVolt=start+1344+i*160 #observed location of sample gas voltage cycles
+        voltSam_raw.append(struct.unpack('6d',buff[startSamVolt:(startSamVolt+6*8)]))
+
+    # test of where voltages are
+    voltTest = []
+    for i in range(len(buff)):
+        thisStart = start + 2 + i
+        theseVolts = np.array(struct.unpack('6d', buff[thisStart:(thisStart+6*8)]))
+        if (theseVolts > 1e4).all() and (theseVolts < 1e6).all():
+            print('Acceptable sequence at: {0}'.format(thisStart))
+            voltTest.append(theseVolts)
+
+    #2. Getting d13C and d18O data for each cycle
+    startEval=buff.find('CDualInletEvaluatedDataCollect') #rough guess of starting position
+    d13C=[]
+    d18O=[]
+    # Exact position is not consistent, so running searching over a 200 byte range for the right start point
+    # This hinges on recognition of pattern where an alternating sequence of 8-bit doubles of cycle number (starting with zero) and bulk isotopic composition for that number
+    found13Cstart=False
+    found18Ostart=False
+    while i < 200 and not (found13Cstart and found18Ostart) :
+
+        if not found13Cstart:
+            start13C = startEval+720+i
+            testList1=struct.unpack('ddd',buff[start13C:start13C+8] + buff[start13C+16:start13C+16+8] + buff[start13C+32:start13C+32+8])
+            if testList1 == (1.0, 2.0, 3.0):
+                found13Cstart=True
+
+        if not found18Ostart:
+            start18O = startEval+1000+i
+            testList2=struct.unpack('ddd',buff[start18O:start18O+8] + buff[start18O+16:start18O+16+8] + buff[start18O+32:start18O+32+8])
+            if testList2 == (1.0, 2.0, 3.0):
+                found18Ostart=True
+        i+=1
+
+    # Alerting if one of the search sequences failed
+    if not found13Cstart:
+        print('Failed to find an appropriate byte sequence for d13C')
+
+    if not found18Ostart:
+        print('Failed to find the appropriate byte sequence for d18O')
+
+
+    # Now, actually pulling bulk isotope data based on start13C and start18O variables
+
+    for i in range(7):
+        # start13C=newstartEval-1461+16*i #observed location of ref gas voltage cycles
+        d13C.append(struct.unpack('d',buff[start13C-8+16*i:(start13C+16*i)])[0])
+
+        # start18O=newstartEval-1188+16*i
+        d18O.append(struct.unpack('d',buff[start18O-8+16*i:(start18O+16*i)])[0])
+
+    # Averaging d13C and d18O for each cycle
+    d13C_final = sum(d13C)/len(d13C)
+    d18O_final = sum(d18O)/len(d18O)
+
+    #3. Pulling out other auxiliary info
+    # 3.1 Ref gas isotope composition
+    startRefGas=buff.find('CEvalDataSecStdTransferPart')
+
+    d13C_ref=struct.unpack('d',buff[startRefGas+203:startRefGas+203+8])[0]
+    d18O_ref=struct.unpack('d',buff[startRefGas+423:startRefGas+423+8])[0]
+
+    # 3.2 whether or not method is a CO2_multiply or a *_start
+    firstAcq = False
+    startMethod = buff.find('CDualInletBlockData')
+    methodBlock = buff[startMethod-120:startMethod-20].decode('utf-16')
+    # if 'CO2_multiply_16V' in methodBlock:
+    #     firstAcq = False
+    # if 'Contin_Start' in methodBlock:
+    #     lastAcq = True
+    #     #TODO: make this a more robust test
+    if 'AL_Pump_Trans' in methodBlock:
+        firstAcq = True
+
+    # 3.3 sample name
+    # Find start of block with sample name
+    startName = buff.find('CSeqLineIndexData')
+    # Rough guess of range where analysis name is, accounting for a large variation in length
+    nameBlock = buff[startName+200:startName+400].decode('utf-16')
+    #Exact name based on locations of unicode strings directly before and after
+    analysisName = nameBlock[(nameBlock.find('Background')+18):(nameBlock.find('Identifier 1')-2)]
+    # Encode as ascii for consistency
+    analysisName = analysisName.encode('ascii')
+
+    # 3.4 background values, and Pressure values
+    #find start of block with background values
+    startBackground = buff.find('CISLScriptMessageData')
+    stopBackground = buff.find('CMeasurmentErrors')
+    #Note incorrect spelling of 'measurement' is intentional
+    backgroundBlock = buff[startBackground+32:stopBackground].decode('utf-16', errors = 'ignore')
+    # Pulling floats out of block
+    backgroundVals = re.findall('[0-9]{1,20}\.[0-9]{1,10}', backgroundBlock)
+    # Only want to take P values if they exist, bc a new acq with Brett's modified code
+    if '100precent' in backgroundBlock:
+        # pressure vals are first, and last two in block
+        pressureVals = [float(backgroundVals[0]), float(backgroundVals[-2]), float(backgroundVals[-1])]
+    else:
+        pressureVals = [np.nan,np.nan,np.nan]
+    # Background vals are other ones, but ignoring these for now
+
+
+
+    # 3.5 Date and Time
+    # Find the start of Ctime block
+    startTime = buff.find('CTimeObject')+49
+    # Pull out the time_t time based on startTime location, seconds since the epoch (Jan 1st, 1970), GMT
+    time_t_time = struct.unpack('i',buff[startTime:startTime+4])[0]
+    # time_str = time.strftime('%m/%d/%Y %H:%M:%S', time.localtime(time_t_time))
+    time_str = time.strftime('%m/%d/%Y', time.localtime(time_t_time))
+
+
+    return voltRef_raw, voltSam_raw, d13C_final, d18O_final, d13C_ref, d18O_ref, analysisName, firstAcq, time_str, pressureVals
+
 
 def CIDS_parser(filePath):
     '''Reads in a .csv CIDS file, pulls out voltages, calculated bulk isotopes, and
@@ -439,7 +584,11 @@ def CIDS_parser(filePath):
       if 'pre' in line:
         cycle=0
         acqIndex += 1
-        acqNum=int(line[line.index('pre')-1]) # Not the same as acqIndex because acq are often skipped
+        try:
+            acqNum=int(line[line.index('pre')-1])     # Not the same as acqIndex because acq are often skipped
+        except(ValueError):
+            acqNum = lastAcqNum + 1
+        lastAcqNum = acqNum
         analyses[-1].acqs.append(ACQUISITION(acqNum))
         preIndex=line.index('pre') #need to save this so that following lines know where to start pulling voltages
         if not analyses[-1].name:
@@ -460,33 +609,33 @@ def CIDS_parser(filePath):
 
       if 'Date:' in line:
         analyses[-1].date= line[line.index('Date:')+1]
-        analyses[-1].acqs[-1].D47_excel=float(line[line.index('D47=')+1])
+        # analyses[-1].acqs[-1].D47_excel=float(line[line.index('D47=')+1])
 
       elif 'Time:' in line:
         analyses[-1].acqs[-1].time=line[line.index('Time:')+1]
-        analyses[-1].acqs[-1].D48_excel=float(line[line.index('D48=')+1])
+        # analyses[-1].acqs[-1].D48_excel=float(line[line.index('D48=')+1])
 
-      elif 'Analyst' in line:
-        analyses[-1].acqs[-1].d45_excel=float(line[line.index('d45')+1])
+    #   elif 'Analyst' in line:
+        # analyses[-1].acqs[-1].d45_excel=float(line[line.index('d45')+1])
 
-      elif 'Type' in line:
-        analyses[-1].type=line[line.index('Type')+1].lower()
+    #   elif 'Type' in line:
+        # analyses[-1].type=line[line.index('Type')+1].lower()
 
       elif 'Sample d13C (VPDB)' in line[0:10]:
         analyses[-1].acqs[-1].d13C=float(line[line.index('Sample d13C (VPDB)')+1])
-        analyses[-1].acqs[-1].d46_excel=float(line[line.index('d46')+1])
+        # analyses[-1].acqs[-1].d46_excel=float(line[line.index('d46')+1])
 
       elif 'Sample d18O (SMOW)' in line[0:10]:
         analyses[-1].acqs[-1].d18O_gas=float(line[line.index('Sample d18O (SMOW)')+1])
-        analyses[-1].acqs[-1].d47_excel=float(line[line.index('d47')+1])
+        # analyses[-1].acqs[-1].d47_excel=float(line[line.index('d47')+1])
 
       elif 'Ref Gas d13C (VPDB)' in line[0:10]:
         analyses[-1].acqs[-1].d13Cref=float(line[line.index('Ref Gas d13C (VPDB)')+1])
-        try:
-          analyses[-1].acqs[-1].d48_excel=float(line[line.index('d48')+1])
-        except:
-          print 'couldn\'t find d48 in acquistions %d' % acqIndex
-          print line
+        # try:
+        #   analyses[-1].acqs[-1].d48_excel=float(line[line.index('d48')+1])
+        # except:
+        #   print 'couldn\'t find d48 in acquistions %d' % acqIndex
+        #   print line
 
       elif 'Ref Gas d18O (VSMOW)' in line[0:10]:
         analyses[-1].acqs[-1].d18Oref=float(line[line.index('Ref Gas d18O (VSMOW)')+1])
@@ -500,7 +649,7 @@ def CIDS_parser(filePath):
     return analyses
 
 
-def CIDS_cleaner(analyses, checkForOutliers = True):
+def CIDS_cleaner(analyses, checkForOutliers = False):
     '''function for cleaning up a parsed CIDS file and alerting to any corrupted analyses'''
 
     # Cleaning up the parsed file
@@ -536,7 +685,8 @@ def CIDS_cleaner(analyses, checkForOutliers = True):
                 (analyses[i].acqs[j].d13C,analyses[i].acqs[j].d18O_gas) = np.around((analyses[i].acqs[j].d13C,analyses[i].acqs[j].d18O_gas),3)
 
 
-    Check_for_wrong_acqs(analyses)
+    if checkForOutliers:
+        Check_for_wrong_acqs(analyses)
     print 'All analyses are cleaned, and voltages converted to arrays'
 
     return analyses
@@ -713,29 +863,58 @@ def CIDS_importer(filePath, displayProgress = False):
     fileImport.close()
     return analyses
 
+def Get_carbonate_stds(analyses):
+    '''Finds which analyses are carbonate standards, and assigns them accepted D47nominal values'''
+    for item in analyses:
+        if item.type == 'std':
+                if 'carrara' in item.name.lower():
+                    item.TCO2 = ''
+                    item.D47nominal = CIT_Carrara_ARF
+                elif 'tv03' in item.name.lower():
+                    item.TCO2 = ''
+                    item.D47nominal = TV03_ARF
+                elif 'nbs-19' in item.name.lower():
+                    item.TCO2 = ''
+                    item.D47nominal = NBS_19_ARF
+                elif 'gc-az' in item.name.lower():
+                    item.TCO2 = ''
+                    item.D47nominal = GC_AZ_ARF
+                elif 'gc_az' in item.name.lower():
+                    item.TCO2 = ''
+                    item.D47nominal = GC_AZ_ARF
+                else:
+                    item.TCO2 = ''
+                    item.D47nominal = ''
 
+    print('All carbonate standards have been found and had accepted D47s assigned ')
+    return
 
 
 def Get_gases(analyses):
     '''Finds which analyses are heated and equilibrated gases, and assigns them TCO2 values'''
-    properNames = raw_input("Do all equilibrated gases have '25' in name? (y/n) ").lower()
+    # properNames = raw_input("Do all equilibrated gases have '25' in name? (y/n) ").lower()
+    properNames == 'y'
     for item in analyses:
-        if 'BOC' in item.name.upper():
+        if item.type in ['hg', 'eg']:
             if properNames == 'y':
                 if '25' in item.name:
                     item.TCO2 = 25
+                    item.D47nominal = ''
                     item.type = 'eg'
                 else :
                     item.TCO2 = 1000
+                    item.D47nominal = ''
                     item.type = 'hg'
             else :
                 while True:
                     choice = raw_input('Is acq num: ' + str(item.num) + ' with name: ' + item.name + ' a (h)eated gas, an (e)quilibrated gas?, or (s)kip? ')
                     if choice.lower() == 'h':
+                        item.D47nominal = ''
                         item.TCO2 = 1000
                         item.type = 'hg'
                         break
                     elif choice.lower() == 'e':
+                        item.D47nominal = ''
                         item.TCO2 = 25
                         item.type = 'eg'
                         break
@@ -765,16 +944,16 @@ def Daeron_exporter_crunch(analyses, fileName):
 
     export=open(fileName +'_daeron'+ '.csv','wb')
     wrt=csv.writer(export,dialect='excel')
-    wrt.writerow(['ID', 'd45', 'd46', 'd47', 'd48', 'd49', 'sd47', 'D17O', 'd13Cwg_pdb', 'd18Owg_pdbco2', 'D47raw', 'D47_raw_sterr', 'TeqCO2', 'D47nominal'])
+    wrt.writerow(['type','ID', 'd45', 'd46', 'd47', 'd48', 'd49', 'sd47', 'D17O', 'd13Cwg_pdb', 'd18Owg_pdbco2', 'D47raw', 'TeqCO2', 'D47nominal'])
     for item in analyses:
-        if np.isnan(item.TCO2):
-            wrt.writerow([item.name, item.d45, item.d46, item.d47, item.d48, item.d49,
-            item.d47_stdev/np.sqrt(len(item.acqs)-item.skipFirstAcq), 0.0, item.acqs[0].d13Cref, (item.acqs[0].d18Oref - 30.92)/1.03092,
-            item.D47_raw, item.D47_sterr])
+        if item.type == 'sample':
+            wrt.writerow([item.type, item.name, item.d45, item.d46, item.d47, item.d48, item.d49,
+            item.d47_stdev/np.sqrt(len(item.acqs)-item.skipFirstAcq), 0.0, item.acqs[0].d13Cref, (item.acqs[0].d18Oref - 41.49)/1.04149,
+            item.D47_raw])
         else :
-            wrt.writerow([item.name, item.d45, item.d46, item.d47, item.d48, item.d49,
-            item.d47_stdev/np.sqrt(len(item.acqs)-item.skipFirstAcq), 0.0, item.acqs[0].d13Cref, (item.acqs[0].d18Oref - 30.92)/1.03092,
-            item.D47_raw, item.D47_sterr, item.TCO2, xlcor47_modified.CO2eqD47(item.TCO2)])
+            wrt.writerow([item.type, item.name, item.d45, item.d46, item.d47, item.d48, item.d49,
+            item.d47_stdev/np.sqrt(len(item.acqs)-item.skipFirstAcq), 0.0, item.acqs[0].d13Cref, (item.acqs[0].d18Oref - 41.49)/1.04149,
+            item.D47_raw, item.TCO2, item.D47nominal])
     export.close()
     return
 
@@ -1063,9 +1242,9 @@ def Get_types_auto(analyses):
     if choice == 's':
         return(analyses)
     elif choice == 'n':
-        print('1. Standards must contain words "carrara", "TV03", or "NBS-19" ')
+        print('1. Standards must contain words "carrara", "TV03", or "NBS-19", "or GC-AZ" ')
         print('2. 25 C equilibrated gases must contain "BOC" AND "25" ')
-        print('3. 1000 C heated gases must contain "BOC" AND NOT "25" AND < 10 chars ')
+        print('3. 1000 C heated gases must contain "BOC" AND NOT "25" AND < 15 chars ')
         print('4. Analyses that already have a valid type are not modified ')
         return(analyses)
     else:
@@ -1074,7 +1253,7 @@ def Get_types_auto(analyses):
                 continue
             else:
                 name = analyses[i].name.lower()
-                if ('carrara' in name) or ('tv03' in name) or ('nbs-19' in name):
+                if ('carrara' in name) or ('tv03' in name) or ('nbs-19' in name) or ('gc-az' in name) or ('gc_az' in name):
                     analyses[i].type = 'std';
                     continue
                 elif ('boc' in name):
@@ -1083,7 +1262,7 @@ def Get_types_auto(analyses):
                         analyses[i].rxnTemp = 25
                         analyses[i].mineral = 'gas'
                         continue
-                    elif (len(name) < 10):
+                    elif (len(name) < 15):
                         analyses[i].type = 'hg'
                         analyses[i].rxnTemp = 25
                         analyses[i].mineral = 'gas'
@@ -1156,10 +1335,13 @@ def CI_CRF_data_corrector(analyses, showFigures = True):
         # Plot the stds
         stds_Carrara = [i for i in analyses if (i.type == 'std' and 'carrara' in i.name.lower() and not i.D48_excess)]
         stds_TV03 = [i for i in analyses if (i.type == 'std' and 'tv03' in i.name.lower() and not i.D48_excess)]
-        plt.figure(0)
-        plt.figure(0).hold(True)
+        stds_GC_AZ = [i for i in analyses if (i.type == 'std' and 'gc-az' in i.name.lower() and not i.D48_excess)]
+        plt.figure(1)
+        plt.figure(1).hold(True)
         plt.errorbar([CIT_Carrara_CRF for i in range(len(stds_Carrara))],[j.D47_CRF-CIT_Carrara_CRF for j in stds_Carrara], yerr = [k.D47_sterr for k in stds_Carrara], fmt = 'o')
         plt.errorbar([TV03_CRF for i in range(len(stds_TV03))],[j.D47_CRF-TV03_CRF for j in stds_TV03], yerr = [k.D47_sterr for k in stds_TV03], fmt = 'o')
+        plt.errorbar([GC_AZ_CRF for i in range(len(stds_GC_AZ))],[j.D47_CRF-GC_AZ_CRF for j in stds_GC_AZ], yerr = [k.D47_sterr for k in stds_GC_AZ], fmt = 'o')
+
         plt.xlim(0.3, 0.7)
         plt.xlabel(ur'$\mathrm{}\Delta_{47, CRF} \/ (\u2030)}$')
         plt.ylabel(ur'$\mathrm{\Delta_{47, measured}-\Delta_{47, expected} \/ (\u2030)}$')
@@ -1192,7 +1374,7 @@ def CI_hg_slope_finder(hgs):
 
 def CI_48_excess_checker(analyses, showFigures = False):
     '''Checks for 48 excess using hg slope and int, based on a certain pre-specified tolerance'''
-    D48_excess_tolerance = 1.0
+    D48_excess_tolerance = 4.0
     hgs = [i for i in analyses if i.type == 'hg']
     hg_slope_48, hg_intercept_48, r_48, sm_48, sb_48, xc_48, yc_, ct_ = lsqcubic(np.asarray([i.d48 for i in hgs]), np.asarray([i.D48_raw for i in hgs]),
     np.asarray([i.d48_stdev for i in hgs]), np.asarray([i.D48_stdev for i in hgs]))
@@ -1238,6 +1420,13 @@ def Carrara_carbonate_correction_ARF(analysis, objName):
         return(analysis.D47_ARF_acid)
     else:
         return(analysis.D47_ARF_acid - CarraraCorrection)
+
+def Carrara_carbonate_correction_CRF(analysis, objName):
+    ''' Function to apply a linear correction to carbonates based on CIT Carrara'''
+    if analysis.type in ['hg', 'eg']:
+        return(analysis.D47_CRF)
+    else:
+        return(analysis.D47_CRF - CarraraCorrection_CRF)
 
 
 
@@ -1403,12 +1592,11 @@ def Daeron_data_processer(analyses, showFigures = False):
 
 
     return
-
 def ExportSequence(analyses, pbl = False):
     '''Most common export sequence'''
     print('Exporting to temporary CIDS and FlatList files ')
     print('Exporting full acqs to a CIDS sheet...')
-    exportNameCIDS = 'autoCIDS_Export'
+    exportNameCIDS = 'autoCIDS_Export_'
     if pbl:
         exportNameCIDS += '_pblCorr'
     CIDS_exporter(analyses, exportNameCIDS)
@@ -1424,6 +1612,53 @@ def ExportSequence(analyses, pbl = False):
         Get_gases(analyses)
         Daeron_exporter_crunch(analyses,exportNameDaeron)
 
+    return
+def ExportSequence_named(analyses, fileName, pbl = False):
+    '''Most common export sequence'''
+    # split filename to get part before file type
+    fileName = fileName.rpartition('.')[0]
+    print('Exporting to temporary CIDS and FlatList files ')
+    print('Exporting full acqs to a CIDS sheet...')
+    exportNameCIDS = 'autoCIDS_Export_' + fileName
+    if pbl:
+        exportNameCIDS += '_pblCorr'
+    CIDS_exporter(analyses, exportNameCIDS)
+    print('Exporting analyses to a flatlist...')
+    exportNameFlatlist = 'autoFlatListExport' + fileName
+    if pbl:
+        exportNameFlatlist += '_pblCorr'
+    FlatList_exporter(analyses,exportNameFlatlist)
+    print('Exporting daeron-formatted file for rambaldi.pythonanywhere.com...')
+    exportNameDaeron = 'autoDaeronExport' + fileName
+    Get_gases(analyses)
+    Get_carbonate_stds(analyses)
+    Daeron_exporter_crunch(analyses,exportNameDaeron)
+    print('Analyses successfully exported')
+
+    return
+
+def plot_T_scale(axis, in_ARF = False):
+    ''' Plots a secondary y-axis with temperature scale to match the D47 on ARF '''
+    # 1. Get D47 labels
+    tlabels = axis.get_yticklabels(which = 'both')
+    # 2. For some reason, have to save fig first
+    fig = plt.gcf()
+    fig.savefig('temp.pdf')
+    y2_temps = []
+    for i in range(len(tlabels)):
+        tl = tlabels[i]
+        D47_str = tl.get_text()
+        if len(D47_str) > 0:
+            if in_ARF:
+                y2_temps.append('{0:.0f}'.format(np.around(CI_D47_to_temp_ARF(float(D47_str)),0)))
+            else:
+                y2_temps.append('{0:.0f}'.format(np.around(CI_D47_to_temp_CRF(float(D47_str)),0)))
+        else:
+            y2_temps.append('')
+    axis2 = axis.twinx()
+    axis2.grid(False)
+    axis2.set_ylabel(ur'Temperature ($^{\circ}$C)')
+    axis2.set_yticklabels(y2_temps)
     return
 
 # def CI_background_correction(instance, objName):
