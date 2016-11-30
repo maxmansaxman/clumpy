@@ -882,6 +882,9 @@ def Get_carbonate_stds(analyses):
                 elif 'gc_az' in item.name.lower():
                     item.TCO2 = ''
                     item.D47nominal = GC_AZ_ARF
+                elif 'tv04' in item.name.lower():
+                    item.TCO2 = ''
+                    item.D47nominal = TV03_ARF
                 else:
                     item.TCO2 = ''
                     item.D47nominal = ''
@@ -1610,6 +1613,7 @@ def ExportSequence(analyses, pbl = False):
     if doDaeron.lower() == 'y':
         exportNameDaeron = 'autoDaeronExport'
         Get_gases(analyses)
+        Get_carbonate_stds(analyses)
         Daeron_exporter_crunch(analyses,exportNameDaeron)
 
     return
