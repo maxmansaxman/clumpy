@@ -1474,15 +1474,18 @@ def CI_D47_to_temp_ARF(D47_ARF_acid):
     #for now, just doing the boniface + Henkes ARF calibration
     # T = np.sqrt(0.0421e6/(D47_ARF_acid - 0.211)) - 273.15
 
+    # NEW Boniface 2016 calibration
+    TKe6 = (D47_ARF_acid-0.1262)/0.0422
+
     # New ARF function, based on Stolper 2015, Bonifacie 2011, Guo 2009, and Ghosh 2006 data
     # projected into ARF using absolute slope
     # a = 0.00108331
     # b = 0.0285392
     # c = 0.258652-D47_ARF_acid
-    a = 0.001083
-    b = 0.02854
-    c = 0.25865-D47_ARF_acid
-    TKe6 = (-b +np.sqrt(b**2-4*a*c))/(2*a)
+    # a = 0.001083
+    # b = 0.02854
+    # c = 0.25865-D47_ARF_acid
+    # TKe6 = (-b +np.sqrt(b**2-4*a*c))/(2*a)
     if TKe6 > 0:
         T_C = np.sqrt(1e6/TKe6)-273.15
     else:
@@ -1496,11 +1499,13 @@ def CI_temp_to_D47_ARF(T_C):
 
     # New ARF function, based on Stolper 2015, Bonifacie 2011, Guo 2009, and Ghosh 2006 data
     # projected into ARF using absolute slope
-    a = 0.00108331
-    b = 0.0285392
-    c = 0.258652
+    # a = 0.00108331
+    # b = 0.0285392
+    # c = 0.258652
     TKe6 = 1e6/(T_C+273.15)**2
-    D47_ARF_acid = a*TKe6**2+b*TKe6+c
+    # D47_ARF_acid = a*TKe6**2+b*TKe6+c
+    D47_ARF_acid= 0.0422*TKe6 + 0.1262
+
     return(D47_ARF_acid)
 
 def CI_D47_to_temp_CRF(D47_CRF_acid):
@@ -1534,6 +1539,25 @@ def CI_water_calibration(d18O_min, T_C):
     d18O_H2O_vsmow = (R18_H2O/R18_vsmow-1)*1000
 
     return(d18O_H2O_vsmow)
+
+
+def CI_carb_water_calibration(d18O_min, T_C, mineral):
+    ''' function to determine fluid composition, in dolomite or calcite'''
+    d18O_min_vsmow = d18O_min*1.03092 + 30.92
+    R18_vsmow = 0.0020052
+    R18_min = (d18O_min_vsmow/1000+1)*R18_vsmow
+    T_K = T_C + 273.15
+    if mineral == 'dolomite':
+        # Horita 2014 calibration
+        alpha_carb_H2O = np.exp((3.140*(1e6/T_K**2)-3.14)/1000)
+    else:
+        #O'neil 1969, Friedman and o'neil 1977 calibration (via horita)
+        alpha_carb_H2O = np.exp((2.789*(1e6/T_K**2)-2.89)/1000)
+
+    R18_H2O = R18_min/alpha_carb_H2O
+    d18O_H2O_vsmow = (R18_H2O/R18_vsmow-1)*1000
+    return(d18O_H2O_vsmow)
+
 
 
 
