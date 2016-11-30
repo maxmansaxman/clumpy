@@ -948,11 +948,11 @@ def Daeron_exporter_crunch(analyses, fileName):
     for item in analyses:
         if item.type == 'sample':
             wrt.writerow([item.type, item.name, item.d45, item.d46, item.d47, item.d48, item.d49,
-            item.d47_stdev/np.sqrt(len(item.acqs)-item.skipFirstAcq), 0.0, item.acqs[0].d13Cref, (item.acqs[0].d18Oref - 30.92)/1.03092,
+            item.d47_stdev/np.sqrt(len(item.acqs)-item.skipFirstAcq), 0.0, item.acqs[0].d13Cref, (item.acqs[0].d18Oref - 41.49)/1.04149,
             item.D47_raw])
         else :
             wrt.writerow([item.type, item.name, item.d45, item.d46, item.d47, item.d48, item.d49,
-            item.d47_stdev/np.sqrt(len(item.acqs)-item.skipFirstAcq), 0.0, item.acqs[0].d13Cref, (item.acqs[0].d18Oref - 30.92)/1.03092,
+            item.d47_stdev/np.sqrt(len(item.acqs)-item.skipFirstAcq), 0.0, item.acqs[0].d13Cref, (item.acqs[0].d18Oref - 41.49)/1.04149,
             item.D47_raw, item.TCO2, item.D47nominal])
     export.close()
     return
