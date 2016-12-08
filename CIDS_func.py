@@ -99,7 +99,6 @@ class CI_CORRECTED_VALUE(object):
     def __delete__(self, instance):
         raise AttributeError('Cannot delete CI corretion scheme')
 
-
 class CI_UNIVERSAL_VALUE(object):
     '''subclass defining how heated gases are taken'''
 
@@ -138,10 +137,6 @@ class CI_VOLTAGE(object):
     def __delete__(self, instance):
         raise AttributeError('Cannot delete individual voltage correction scheme')
 
-
-
-
-
 class CI(object):
     "A class for all the attributes of a single clumped isotope measurement"
 
@@ -155,7 +150,7 @@ class CI(object):
         self.skipFirstAcq = True
         self.TCO2 = np.nan
         self.D48_excess = False
-        self.useBrand2010 = False
+        self.useBrand2010 = True
         self.rxnTemp = 90
         self.mineral = 'calcite'
 
@@ -195,11 +190,8 @@ class CI(object):
     T_D47_ARF = CI_CORRECTED_VALUE('T_D47_ARF')
     D47_ARF_stdCorr = CI_CORRECTED_VALUE('D47_ARF_stdCorr')
 
-
-
 class ACQUISITION(object):
     "A class for all the attributes of a single clumped isotope acquision"
-
 
     def __init__(self,acqNum):
         self.acqNum=acqNum
@@ -212,18 +204,16 @@ class ACQUISITION(object):
         self.d18Oref = 0
         self.date=''
         self.time=''
-        self.useBrand2010 = False
+        self.useBrand2010 = True
         self.pressureVals = [np.nan,np.nan,np.nan]
         # self.rxnTemp = 90
         # self.mineral = 'calcite'
-
         self.D47_excel=0
         self.D48_excel=0
         self.d45_excel=0
         self.d46_excel=0
         self.d47_excel=0
         self.d48_excel=0
-
 
     d46=CI_VALUE('d46')
     d45=CI_VALUE('d45')
@@ -237,7 +227,6 @@ class ACQUISITION(object):
     # d18O_min = CI_VALUE('d18O_min')
     voltSam = CI_VOLTAGE('voltSam')
     voltRef = CI_VOLTAGE('voltRef')
-
 
 def defliese_acid_equation(T_c):
     ''' calculates the will defliese phosphoric acid equation'''
@@ -283,7 +272,6 @@ def carb_gas_oxygen_fractionation_acq(instance):
 
     d18O_min = ((d18O_vpdb+1000)/rxnFrac[rxnKey])-1000
     return d18O_min
-
 
 def Isodat_File_Parser(fileName):
     '''Reads in a .did file (Isodat acquisition file), returns the raw voltages for
@@ -554,7 +542,6 @@ def Isodat_File_Parser_CAF(fileName):
 
     return voltRef_raw, voltSam_raw, d13C_final, d18O_final, d13C_ref, d18O_ref, analysisName, firstAcq, time_str, pressureVals
 
-
 def CIDS_parser(filePath):
     '''Reads in a .csv CIDS file, pulls out voltages, calculated bulk isotopes, and
     relevant sample information'''
@@ -647,7 +634,6 @@ def CIDS_parser(filePath):
             analyses[-1].acqs[-1].background = [float(t) for t in backgrounds]
 
     return analyses
-
 
 def CIDS_cleaner(analyses, checkForOutliers = False):
     '''function for cleaning up a parsed CIDS file and alerting to any corrupted analyses'''
@@ -892,7 +878,6 @@ def Get_carbonate_stds(analyses):
     print('All carbonate standards have been found and had accepted D47s assigned ')
     return
 
-
 def Get_gases(analyses):
     '''Finds which analyses are heated and equilibrated gases, and assigns them TCO2 values'''
     # properNames = raw_input("Do all equilibrated gases have '25' in name? (y/n) ").lower()
@@ -951,15 +936,14 @@ def Daeron_exporter_crunch(analyses, fileName):
     for item in analyses:
         if item.type == 'sample':
             wrt.writerow([item.type, item.name, item.d45, item.d46, item.d47, item.d48, item.d49,
-            item.d47_stdev/np.sqrt(len(item.acqs)-item.skipFirstAcq), 0.0, item.acqs[0].d13Cref, (item.acqs[0].d18Oref - 41.49)/1.04149,
+            item.d47_stdev/np.sqrt(len(item.acqs)-item.skipFirstAcq), 0.0, item.acqs[0].d13Cref, (item.acqs[0].d18Oref - 41.48693)/1.04148693,
             item.D47_raw])
         else :
             wrt.writerow([item.type, item.name, item.d45, item.d46, item.d47, item.d48, item.d49,
-            item.d47_stdev/np.sqrt(len(item.acqs)-item.skipFirstAcq), 0.0, item.acqs[0].d13Cref, (item.acqs[0].d18Oref - 41.49)/1.04149,
+            item.d47_stdev/np.sqrt(len(item.acqs)-item.skipFirstAcq), 0.0, item.acqs[0].d13Cref, (item.acqs[0].d18Oref - 41.48693)/1.04148693,
             item.D47_raw, item.TCO2, item.D47nominal])
     export.close()
     return
-
 
 def Pressure_Baseline_Processer(fileFolder):
     '''Pulls raw intensity data out of a folder of peak scans'''
@@ -1007,12 +991,13 @@ def bulk_comp_brand_2010(acq, objName):
     a = 0.528
     K = 0.01022461
     vpdb_R13 = 0.011180
-    vpdb_R18 = 0.00208835
+    vpdb_R18 = 0.00208839
 
     vpdb_R17 = K*vpdb_R18**a
+    # vpdb_R17 = 0.00039310
 
     # convert wg d18O to vpdb, using the recommended value of Coplen et al., 1983 (once NBS-19 is corrected to +2.2 permille)
-    d18Oref_vpdb = (acq.d18Oref-30.92)/1.03092
+    d18Oref_vpdb = (acq.d18Oref-41.48693)/1.04148693
 
     # Calculate working gas ratios
     R13_ref=(acq.d13Cref/1000+1)*vpdb_R13
@@ -1054,7 +1039,7 @@ def bulk_comp_brand_2010(acq, objName):
     r13C_brand, r17O_brand, r18O_brand = bulk_comp_result.x
     d13C_vpdb_brand = (r13C_brand/vpdb_R13 -1)*1000
     d18O_vpdb_brand = (r18O_brand/vpdb_R18 -1)*1000
-    d18O_vsmow_brand = d18O_vpdb_brand*1.03092 + 30.92
+    d18O_vsmow_brand = d18O_vpdb_brand*1.04148693 + 41.48693
 
     #assemble dict
     bulk_comps = {'d13C_brand': d13C_vpdb_brand, 'd18O_brand': d18O_vsmow_brand}
@@ -1084,7 +1069,6 @@ def bulk_comp_solver(calcRatios, *extraArgs):
     R17_residual = K*calcRatios[2]**a - calcRatios[1]
     return(R13_residual, R18_residual, R17_residual)
 
-
 def D47_calculation_valued(acq, objName):
     '''Performs all the clumped isotope calculations for a single acq'''
 
@@ -1095,22 +1079,23 @@ def D47_calculation_valued(acq, objName):
 
     # if using Brand et al. (2010) correction
     if acq.useBrand2010:
-        # then apply new accepted values
         lambda_17 = 0.528
         K = 0.01022461
         vpdb_13C = 0.011180
-        vpdb_18O = 0.00208835
-        vpdb_17O = K*vpdb_18O**lambda_17
+        vpdb_18O = 0.00208839
+
+        vpdb_17O = K*vpdb_R18**a
+        # vpdb_17O = 0.00039310
 
         # convert wg d18O to vpdb, using the recommended value of Coplen et al., 1983 (once NBS-19 is corrected to +2.2 permille)
-        d18Oref_vpdb = (acq.d18Oref-30.92)/1.03092
+        d18Oref_vpdb = (acq.d18Oref-41.48693)/1.04148693
 
         # Calculate working gas ratios
         R13_ref=(acq.d13Cref/1000+1)*vpdb_13C
         R18_ref=(d18Oref_vpdb/1000+1)*vpdb_18O
         R17_ref=np.power((R18_ref/vpdb_18O),lambda_17)*vpdb_17O
 
-        d18O_gas_vpdb = (acq.d18O_gas-30.92)/1.03092
+        d18O_gas_vpdb = (acq.d18O_gas-41.48693)/1.04148693
         #
         R13_sa=(acq.d13C/1000+1)*vpdb_13C
         R18_sa=(d18O_gas_vpdb/1000+1)*vpdb_18O
@@ -1131,7 +1116,6 @@ def D47_calculation_valued(acq, objName):
     R13=np.array([R13_sa, R13_ref])
     R17=np.array([R17_sa, R17_ref])
     R18=np.array([R18_sa, R18_ref])
-
 
     R45_stoch=R13+2*R17
     R46_stoch=2*R13*R17+R17*R17+2*R18
@@ -1172,7 +1156,6 @@ def D47_calculation_valued(acq, objName):
     calculatedCIValues = {'d45': d45, 'd46': d46, 'd47': d47, 'd48': d48, 'd49': d49,'D47_raw': D47_raw, 'D48_raw': D48_raw}
 
     return calculatedCIValues[objName]
-
 
 def CI_averages_valued_individual(analysis, objName):
     '''Computes the mean, std dev, and std error for every attribute useful for a CI measurement'''
@@ -1364,17 +1347,6 @@ def CI_hg_slope_finder(hgs):
 
     return hg_slope
 
-#
-# def CI_hg_slope_finder(d47_hgs, D47_raw_hgs, d47_stdev_hgs, D47_sterr_hgs):
-#     # Now, make hg D47 line, using a York regression
-#     global hg_slope, hg_intercept
-#     hg_slope, hg_intercept, r_47, sm, sb, xc, yc, ct = lsqcubic(d47_hgs, D47_raw_hgs,d47_stdev_hgs, D47_sterr_hgs)
-#
-#     return hg_slope
-
-
-
-
 def CI_48_excess_checker(analyses, showFigures = False):
     '''Checks for 48 excess using hg slope and int, based on a certain pre-specified tolerance'''
     D48_excess_tolerance = 4.0
@@ -1416,7 +1388,6 @@ def CI_48_excess_checker(analyses, showFigures = False):
 
     return
 
-
 def Carrara_carbonate_correction_ARF(analysis, objName):
     ''' Function to apply a linear correction to carbonates based on CIT Carrara'''
     if analysis.type in ['hg', 'eg']:
@@ -1430,8 +1401,6 @@ def Carrara_carbonate_correction_CRF(analysis, objName):
         return(analysis.D47_CRF)
     else:
         return(analysis.D47_CRF - CarraraCorrection_CRF)
-
-
 
 def CI_CRF_corrector(analysis, objName):
     '''Function to apply the heated gas correction in the Caltech Ref Frame'''
@@ -1524,8 +1493,6 @@ def CI_D47_to_temp_CRF(D47_CRF_acid):
         T_C = np.nan
     return(T_C)
 
-
-
 def CI_water_calibration(d18O_min, T_C):
     '''Function to determine d18O of the water from which calcite crystallized
     Using the Kim and O'Neil 1997 calibration line
@@ -1561,13 +1528,6 @@ def CI_carb_water_calibration(d18O_min, T_C, mineral):
     d18O_H2O_vsmow = (R18_H2O/R18_vsmow-1)*1000
     return(d18O_H2O_vsmow)
 
-
-
-
-
-
-
-
 def CI_hg_values(instance, objName):
     '''Placeholder for hg slope and int when used in CI classes'''
     try:
@@ -1576,14 +1536,13 @@ def CI_hg_values(instance, objName):
     except(NameError, AttributeError):
         return(np.NaN)
 
-
 def Daeron_data_creator(analyses):
     '''Creates a list of dictionaries in the format needed for M. Daeron's data
     processing script '''
     daeronData = []
     for i in analyses:
         daeronData.append({'label': i.name, 'd45': i.d45, 'd46':i.d46,'d47': i.d47, 'd48': i.d48, 'd49': i.d49,
-        'sd47': i.d47_stdev/np.sqrt(len(i.acqs)-i.skipFirstAcq), 'D17O': 0.0, 'd13Cwg_pdb': i.acqs[0].d13Cref, 'd18Owg_pdbco2': (i.acqs[0].d18Oref - 30.92)/1.03092,
+        'sd47': i.d47_stdev/np.sqrt(len(i.acqs)-i.skipFirstAcq), 'D17O': 0.0, 'd13Cwg_pdb': i.acqs[0].d13Cref, 'd18Owg_pdbco2': (i.acqs[0].d18Oref - 41.48693)/1.04148693,
         'D47raw': i.D47_raw, 'D47_raw_sterr': i.D47_sterr} )
         if i.type == 'hg':
             daeronData[-1]['TCO2eq'] = 1000.0
@@ -1615,8 +1574,6 @@ def Daeron_data_processer(analyses, showFigures = False):
     global CarraraCorrection
     CarraraCorrection = np.mean([i.D47_ARF_acid for i in stds_Carrara]) - CIT_Carrara_ARF
     print('Carrara Correction is: '+ str(CarraraCorrection))
-
-
 
     return
 def ExportSequence(analyses, pbl = False):
@@ -1689,26 +1646,6 @@ def plot_T_scale(axis, in_ARF = False):
     axis2.set_yticklabels(y2_temps)
     return
 
-# def CI_background_correction(instance, objName):
-#     voltSamTemp = np.copy(instance.voltSam_raw)
-#     voltRefTemp = np.copy(instance.voltRef_raw)
-#
-#     slopeArray = np.array([0, 0 , 0, mass47PblSlope, 0, 0])
-#     interceptArray  = np.array([0, 0, 0, mass47PblIntercept, 0, 0])
-#
-#     # mass 47 correction
-#     try:
-#         # print('Correcting voltages now')
-#         # print('using this mass47 slope: '+ str(mass47PblSlope))
-#         voltSamTemp[:,3] = voltSamTemp[:,3] - mass47PblSlope * voltSamTemp[:,0] - mass47PblIntercept
-#         voltRefTemp[:,3] = voltRefTemp[:,3] - mass47PblSlope * voltRefTemp[:,0] - mass47PblIntercept
-#     except(IndexError):
-#         return 0
-#
-#     voltages = {'voltSam': voltSamTemp, 'voltRef': voltRefTemp}
-#
-#     return(voltages[objName])
-
 def CI_background_correction(instance, objName):
     # voltSamTemp = np.copy(instance.voltSam_raw)
     # voltRefTemp = np.copy(instance.voltRef_raw)
@@ -1729,20 +1666,18 @@ def CI_background_correction(instance, objName):
 
     return(voltages[objName])
 
-
 def Set_mass_47_pbl(pblSlope):
     global mass47PblSlope
     mass47PblSlope = pblSlope
     # mass47PblIntercept = pblIntercept
 
-
 def D47_mixing(x_1, d13C_1, d18O_1, D47_1, x_2, d13C_2, d18O_2, D47_2):
     ''' Mixing between two endmembers, in concentrations, assuming d13C in vpdb and d18O in vsmow'''
 
-    vpdb_13C=0.0112372 # values copied from CIDS spreadsheet
+    vpdb_13C=0.01118 # values copied from CIDS spreadsheet
     vsmow_18O=0.0020052
-    vsmow_17O=0.0003799
-    lambda_17=0.5164
+    vsmow_17O=0.00038475
+    lambda_17=0.528
 
     R13_1=(d13C_1/1000+1)*vpdb_13C
     R18_1=(d18O_1/1000+1)*vsmow_18O
@@ -1800,15 +1735,6 @@ def D47_mixing(x_1, d13C_1, d18O_1, D47_1, x_2, d13C_2, d18O_2, D47_2):
     d18O_m = (R18_m/vsmow_18O-1)*1000
 
     return(d13C_m,d18O_m,D47_m)
-
-
-
-
-
-
-
-
-
 
 def lsqfitma(X, Y):
     """
@@ -1881,20 +1807,19 @@ def lsqfitma(X, Y):
 
     return m, b, r, sm, sb
 
-
 def lsqcubic(X, Y, sX, sY, tl=1e-6):
     """
     From:
     # teaching.py
-#
-# purpose:  Teaching module of ff_tools.
-# author:   Filipe P. A. Fernandes
-# e-mail:   ocefpaf@gmail
-# web:      http://ocefpaf.tiddlyspot.com/
-# created:  09-Sep-2011
-# modified: Sun 23 Jun 2013 04:30:45 PM BRT
-#
-# obs: Just some basic example function.
+    #
+    # purpose:  Teaching module of ff_tools.
+    # author:   Filipe P. A. Fernandes
+    # e-mail:   ocefpaf@gmail
+    # web:      http://ocefpaf.tiddlyspot.com/
+    # created:  09-Sep-2011
+    # modified: Sun 23 Jun 2013 04:30:45 PM BRT
+    #
+    # obs: Just some basic example function.
 
     Calculate a MODEL-2 least squares fit from weighted data.
 
