@@ -10,6 +10,7 @@ import csv
 import os
 from flask import Flask, request, url_for, render_template
 import numpy as np
+from pylab import linalg
 from matplotlib import use
 # use('Agg')
 from matplotlib import rcParams
@@ -20,7 +21,7 @@ import matplotlib.pyplot as mpl
 # import matplotlib.font_manager
 # print matplotlib.font_manager.findSystemFonts(fontpaths=None, fontext='ttf')
 
-def compute_CO2eqD47() :
+def __CO2eqD47_function() :
 	'''
 	Theoretical equilibrium values for D47 in CO2 gas according to
 	Wang et al. (2004) [http://dx.doi.org/10.1016/j.gca.2004.05.039],
@@ -55,15 +56,17 @@ def compute_CO2eqD47() :
 	# Quadratic polynomial fit as used by
 	# Dennis et al. (2011) [http://dx.doi.org/10.1016/j.gca.2011.09.025]:
 	eq_fit = np.polyfit( 1/(T+273.15), D47, 4 )
-	return lambda T : \
-		eq_fit[0] * (T+273.15)**-4 + \
-		eq_fit[1] * (T+273.15)**-3 + \
-		eq_fit[2] * (T+273.15)**-2 + \
-		eq_fit[3] * (T+273.15)**-1 + \
-		eq_fit[4]
+	# return a function in order to avoid unnecessarily recomputing the polyfit
+	def CO2eqD47( T ) :
+		'''
+		Return the theoretical equilibrium values for Δ47 in CO2 gas as
+		a function of T (°C) computed by Wang et al. (2004).
+		'''
+		return sum([ eq_fit[k] * ( T + 273.15 ) ** ( k - 4 ) for k in range(5) ])
 
-CO2eqD47 = compute_CO2eqD47() # define the T law for equilibrium D47 values in CO2
+	return CO2eqD47
 
+CO2eqD47 = __CO2eqD47_function()
 
 def read_xls( content ) :
 	'''

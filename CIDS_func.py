@@ -82,13 +82,13 @@ class CI_CORRECTED_VALUE(object):
 
     def __get__(self,instance,cls):
         if self.name in ['D47_CRF']:
-            return np.around(CI_CRF_corrector(instance, self.name),3)
+            return np.around(CI_CRF_corrector(instance, self.name),5)
         elif self.name in ['D47_ARF_acid']:
-            return np.around(CI_ARF_acid_corrector(instance, self.name),3)
+            return np.around(CI_ARF_acid_corrector(instance, self.name),5)
         elif self.name in ['T_D47_ARF']:
             return np.around(CI_temp_calibrations(instance, self.name),2)
         elif self.name in ['D47_ARF_stdCorr']:
-            return np.around(Carrara_carbonate_correction_ARF(instance, self.name), 3)
+            return np.around(Carrara_carbonate_correction_ARF(instance, self.name), 5)
 
         else:
             raise ValueError('Sample D47_raw is out of range')
@@ -750,7 +750,7 @@ def FlatList_exporter(analyses,fileName, displayProgress = False):
         for item in analyses:
             wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.acqs[0].pressureVals[0],item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
             item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept,
-            item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all, 3), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF, item.D47_ARF_stdCorr, item.D48_excess, item.d13C_brand, item.d18O_brand])
+            item.D47_CRF, np.around(item.D47_ARF, 5), np.around(item.D47_error_all, 5), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF, item.D47_ARF_stdCorr, item.D48_excess, item.d13C_brand, item.d18O_brand])
             counter += 1
             if ((counter * 100)*100) % (len(analyses)*100) == 0:
                 print(str((counter*100)/len(analyses)) + '% done')
@@ -758,7 +758,7 @@ def FlatList_exporter(analyses,fileName, displayProgress = False):
         for item in analyses:
             wrt.writerow([item.user, item.date, item.type, item.name, item.num, (len(item.acqs)-item.skipFirstAcq), item.acqs[0].pressureVals[0],item.d13C, item.d13C_stdev, item.d18O_gas, item.d18O_min,
             item.d18O_stdev,item.d47,item.d47_stdev,item.D47_raw, item.D47_stdev,item.D47_sterr,item.d48,item.d48_stdev,item.D48_raw,item.D48_stdev, item.hg_slope, item.hg_intercept,
-            item.D47_CRF, np.around(item.D47_ARF, 3), np.around(item.D47_error_all,3), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF, item.D47_ARF_stdCorr, item.D48_excess, item.d13C_brand, item.d18O_brand])
+            item.D47_CRF, np.around(item.D47_ARF, 5), np.around(item.D47_error_all,5), item.mineral, item.rxnTemp, item.D47_ARF_acid, item.T_D47_ARF, item.D47_ARF_stdCorr, item.D48_excess, item.d13C_brand, item.d18O_brand])
     export.close()
     return
 
@@ -1077,8 +1077,6 @@ def bulk_comp_brand_2010(acq, objName):
     R13_taylor = R_measured_mean[0] - 2*R17_taylor
     d13C_taylor = (R13_taylor/vpdb_R13-1)*1000
 
-    # d13C_vpdb_brand = (r13C_brand/vpdb_R13 -1)*1000
-    # d18O_vpdb_brand = (r18O_brand/vpdb_R18 -1)*1000
     d13C_vpdb_brand = d13C_taylor
     d18O_vpdb_brand = d18O_taylor
     d18O_vsmow_brand = d18O_vpdb_brand*1.04148693 + 41.48693
