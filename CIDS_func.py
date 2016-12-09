@@ -39,9 +39,9 @@ class CI_VALUE(object):
     def __get__(self,instance,cls):
         if len(instance.voltRef)>6:
             if self.name in ['d45', 'd46', 'd47', 'd48', 'd49','D47_raw', 'D48_raw']:
-                return np.around(D47_calculation_valued(instance, self.name),5)
-            elif self.name in ['d13C_brand', 'd18O_brand']:
-                return np.around(bulk_comp_brand_2010(instance, self.name),5)
+                return np.around(D47_calculation_valued(instance, self.name),7)
+            elif self.name in ['d13C_brand', 'd18O_brand', 'd18O_taylor', 'd13C_taylor']:
+                return np.around(bulk_comp_brand_2010(instance, self.name),7)
 
     def __set__(self, obj, value):
         raise AttributeError('Cannot change CI calculation scheme')
@@ -58,10 +58,11 @@ class CI_AVERAGE(object):
     def __get__(self,instance,cls):
         if len(instance.acqs)>=1:
             if self.name in ['d13C','d13C_stdev','d18O_gas','d18O_stdev', 'd45', 'd46', 'd47','d47_stdev',
-            'D47_raw','D47_stdev', 'D47_sterr','d48','d48_stdev', 'd49','D48_raw','D48_stdev', 'd13C_brand', 'd18O_brand']:
-                return np.around(CI_averages_valued_individual(instance, self.name),5)
+            'D47_raw','D47_stdev', 'D47_sterr','d48','d48_stdev', 'd49','D48_raw','D48_stdev', 'd13C_brand',
+            'd18O_brand', 'd18O_taylor', 'd13C_taylor']:
+                return np.around(CI_averages_valued_individual(instance, self.name),7)
             elif self.name in ['d18O_min']:
-                return np.around(carb_gas_oxygen_fractionation_acq(instance),5)
+                return np.around(carb_gas_oxygen_fractionation_acq(instance),7)
 
         else:
             raise ValueError('Sample has no acquisitions to average')
@@ -181,6 +182,10 @@ class CI(object):
     d18O_stdev = CI_AVERAGE('d18O_stdev')
     d13C_brand = CI_AVERAGE('d13C_brand')
     d18O_brand = CI_AVERAGE('d18O_brand')
+    d18O_taylor = CI_AVERAGE('d18O_taylor')
+    d13C_taylor = CI_AVERAGE('d13C_taylor')
+
+
 
     D47_CRF = CI_CORRECTED_VALUE('D47_CRF')
     hg_slope = CI_UNIVERSAL_VALUE('hg_slope')
@@ -224,6 +229,9 @@ class ACQUISITION(object):
     d49 = CI_VALUE('d49')
     d13C_brand = CI_VALUE('d13C_brand')
     d18O_brand = CI_VALUE('d18O_brand')
+    d18O_taylor = CI_VALUE('d18O_taylor')
+    d13C_taylor = CI_VALUE('d13C_taylor')
+
     # d18O_min = CI_VALUE('d18O_min')
     voltSam = CI_VOLTAGE('voltSam')
     voltRef = CI_VOLTAGE('voltRef')
@@ -988,13 +996,23 @@ def Pressure_Baseline_Processer(fileFolder):
     return int44, int49, minimums
 def bulk_comp_brand_2010(acq, objName):
     ''' Brand 2010 style calculation of bulk composition'''
-    a = 0.528
-    K = 0.01022461
+    lambda_17 = 0.528
+    K = 0.01022451
+    vsmow_R18 = 0.0020052
+    vsmow_R17 = 0.00038475
     vpdb_R13 = 0.011180
-    vpdb_R18 = 0.00208839
 
-    vpdb_R17 = K*vpdb_R18**a
-    # vpdb_R17 = 0.00039310
+    # Derived quantities
+    vpdb_R18 = vsmow_R18*1.03092*1.01025
+    # vpdb_R17 = vsmow_R17*(1.03092*1.01025)**lambda_17
+
+    # vpdb_R18 = 0.002088389
+    vpdb_R17 = 0.00039310
+
+    # Dummy holder eventually need to add in D17 of sample
+    D17O_anomaly = 0
+    K_general = np.exp(D17O_anomaly)*vpdb_R17*vpdb_R18**-lambda_17
+
 
     # convert wg d18O to vpdb, using the recommended value of Coplen et al., 1983 (once NBS-19 is corrected to +2.2 permille)
     d18Oref_vpdb = (acq.d18Oref-41.48693)/1.04148693
@@ -1002,7 +1020,7 @@ def bulk_comp_brand_2010(acq, objName):
     # Calculate working gas ratios
     R13_ref=(acq.d13Cref/1000+1)*vpdb_R13
     R18_ref=(d18Oref_vpdb/1000+1)*vpdb_R18
-    R17_ref=np.power((R18_ref/vpdb_R18),a)*vpdb_R17
+    R17_ref=np.power((R18_ref/vpdb_R18),lambda_17)*vpdb_R17
 
     # calculating measured voltage ratios, with sample/ref bracketing
     R_measured_analysis=(acq.voltSam[:,1:6]/(np.tile(acq.voltSam[:,0],(5,1)).T))
@@ -1030,19 +1048,44 @@ def bulk_comp_brand_2010(acq, objName):
     R_ref_stoch = np.array([R45_ref_stoch, R46_ref_stoch, R47_ref_stoch, R48_ref_stoch, R49_ref_stoch])
     # multiply by deltas to get 'true' ratios in sample gas. This assumes that wg is stochastic in composition
     R_measured_mean = (delta_measured_mean[0,:]/1000+1)*R_ref_stoch
-    # assemble extra arguments tuple to pass to solver
-    extraArgs = (R_measured_mean[0:3], a, K,)
-    # inital guess from true ratios of wg. Order is 13C, 17O, 18O
-    R_guess_init = [R13_ref, R17_ref, R18_ref]
-    # Minimize residuals for bulk solver
-    bulk_comp_result = root(bulk_comp_solver, R_guess_init, args = extraArgs, method = 'lm', options = {'xtol':1e-20, 'ftol':1e-20})
-    r13C_brand, r17O_brand, r18O_brand = bulk_comp_result.x
-    d13C_vpdb_brand = (r13C_brand/vpdb_R13 -1)*1000
-    d18O_vpdb_brand = (r18O_brand/vpdb_R18 -1)*1000
+    # # assemble extra arguments tuple to pass to solver
+    # extraArgs = (R_measured_mean[0:3], lambda_17, K,)
+    # # inital guess from true ratios of wg. Order is 13C, 17O, 18O
+    # R_guess_init = [R13_ref, R17_ref, R18_ref]
+    # # Minimize residuals for bulk solver
+    # bulk_comp_result = root(bulk_comp_solver, R_guess_init, args = extraArgs, method = 'lm', options = {'xtol':1e-20, 'ftol':1e-20})
+    # r13C_brand, r17O_brand, r18O_brand = bulk_comp_result.x
+
+    # TAYLOR POLYNOMIAL VERSION OF THE SAME
+    # From Daeron et al., 2016, Appendix B
+    # Calculate K specifically for the ref gas composition
+    K = np.exp(D17O_anomaly) * vpdb_R17 * vpdb_R18 ** -lambda_17
+    #taylor polynomials of the d46-d18O equations
+    A_taylor = -3 * K**2 * (vpdb_R18**(2*lambda_17))
+    B_taylor = 2 * K * R_measured_mean[0]*(vpdb_R18**lambda_17)
+    C_taylor = 2 * vpdb_R18
+    D_taylor = -R_measured_mean[1]
+
+    a_taylor = A_taylor*lambda_17*(2*lambda_17-1) + B_taylor*lambda_17*(lambda_17-1)/2
+    b_taylor = 2*A_taylor*lambda_17+B_taylor*lambda_17+C_taylor
+    c_taylor = A_taylor + B_taylor + C_taylor + D_taylor
+    # solve using quadratic eqn
+    # in vpdb_co2 space
+    d18O_taylor = 1000*(-b_taylor + (b_taylor**2-4*a_taylor*c_taylor)**0.5)/(2*a_taylor)
+    R18_taylor = (d18O_taylor/1000+1)*vpdb_R18
+    R17_taylor = K * R18_taylor**lambda_17
+    R13_taylor = R_measured_mean[0] - 2*R17_taylor
+    d13C_taylor = (R13_taylor/vpdb_R13-1)*1000
+
+    # d13C_vpdb_brand = (r13C_brand/vpdb_R13 -1)*1000
+    # d18O_vpdb_brand = (r18O_brand/vpdb_R18 -1)*1000
+    d13C_vpdb_brand = d13C_taylor
+    d18O_vpdb_brand = d18O_taylor
     d18O_vsmow_brand = d18O_vpdb_brand*1.04148693 + 41.48693
 
+
     #assemble dict
-    bulk_comps = {'d13C_brand': d13C_vpdb_brand, 'd18O_brand': d18O_vsmow_brand}
+    bulk_comps = {'d13C_brand': d13C_vpdb_brand, 'd18O_brand': d18O_vsmow_brand, 'd18O_taylor': d18O_taylor, 'd13C_taylor': d13C_taylor}
     return(bulk_comps[objName])
 
 def Brand_2010_bulk_comp_setter(analyses):
@@ -1080,12 +1123,16 @@ def D47_calculation_valued(acq, objName):
     # if using Brand et al. (2010) correction
     if acq.useBrand2010:
         lambda_17 = 0.528
-        K = 0.01022461
+        K = 0.01022451
+        vsmow_18O = 0.0020052
+        vsmow_17O = 0.00038475
         vpdb_13C = 0.011180
-        vpdb_18O = 0.00208839
 
-        vpdb_17O = K*vpdb_R18**a
-        # vpdb_17O = 0.00039310
+        # Derived quantities
+        vpdb_18O = vsmow_18O*1.03092*1.01025
+        # vpdb_17O = vsmow_17O*(1.03092*1.01025)**lambda_17
+        # vpdb_17O = K*vpdb_R18**a
+        vpdb_17O = 0.0003931
 
         # convert wg d18O to vpdb, using the recommended value of Coplen et al., 1983 (once NBS-19 is corrected to +2.2 permille)
         d18Oref_vpdb = (acq.d18Oref-41.48693)/1.04148693
