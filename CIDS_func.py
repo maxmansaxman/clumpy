@@ -23,6 +23,10 @@ NBS_19_ARF = CIT_Carrara_ARF
 TV03_ARF = 0.635 + 0.092
 GC_AZ_ARF = 0.710
 
+
+
+
+
 global mass47PblSlope
 mass47PblSlope = 0
 
@@ -859,26 +863,27 @@ def CIDS_importer(filePath, displayProgress = False):
 
 def Get_carbonate_stds(analyses):
     '''Finds which analyses are carbonate standards, and assigns them accepted D47nominal values'''
+    acid_correction_dict = {90: 0.092, 50: 0.040, 25: 0.0}
     for item in analyses:
         if item.type == 'std':
                 if 'carrara' in item.name.lower():
                     item.TCO2 = ''
-                    item.D47nominal = CIT_Carrara_ARF
+                    item.D47nominal = CIT_Carrara_ARF -acid_correction_dict[item.rxnTemp]
                 elif 'tv03' in item.name.lower():
                     item.TCO2 = ''
-                    item.D47nominal = TV03_ARF
+                    item.D47nominal = TV03_ARF -acid_correction_dict[item.rxnTemp]
                 elif 'nbs-19' in item.name.lower():
                     item.TCO2 = ''
-                    item.D47nominal = NBS_19_ARF
+                    item.D47nominal = NBS_19_ARF -acid_correction_dict[item.rxnTemp]
                 elif 'gc-az' in item.name.lower():
                     item.TCO2 = ''
-                    item.D47nominal = GC_AZ_ARF
+                    item.D47nominal = GC_AZ_ARF -acid_correction_dict[item.rxnTemp]
                 elif 'gc_az' in item.name.lower():
                     item.TCO2 = ''
-                    item.D47nominal = GC_AZ_ARF
+                    item.D47nominal = GC_AZ_ARF -acid_correction_dict[item.rxnTemp]
                 elif 'tv04' in item.name.lower():
                     item.TCO2 = ''
-                    item.D47nominal = TV03_ARF
+                    item.D47nominal = TV03_ARF -acid_correction_dict[item.rxnTemp]
                 else:
                     item.TCO2 = ''
                     item.D47nominal = ''
@@ -1581,26 +1586,63 @@ def CI_hg_values(instance, objName):
     except(NameError, AttributeError):
         return(np.NaN)
 
-def Daeron_data_creator(analyses):
+def Daeron_data_creator(analyses, useCarbStandards = False):
     '''Creates a list of dictionaries in the format needed for M. Daeron's data
     processing script '''
+    acid_correction_dict = {90: 0.092, 50: 0.040, 25: 0.0}
     daeronData = []
-    for i in analyses:
-        daeronData.append({'label': i.name, 'd45': i.d45, 'd46':i.d46,'d47': i.d47, 'd48': i.d48, 'd49': i.d49,
-        'sd47': i.d47_stdev/np.sqrt(len(i.acqs)-i.skipFirstAcq), 'D17O': 0.0, 'd13Cwg_pdb': i.acqs[0].d13Cref, 'd18Owg_pdbco2': (i.acqs[0].d18Oref - 41.48693)/1.04148693,
-        'D47raw': i.D47_raw, 'D47_raw_sterr': i.D47_sterr} )
-        if i.type == 'hg':
-            daeronData[-1]['TCO2eq'] = 1000.0
-            daeronData[-1]['D47nominal'] = xlcor47_modified.CO2eqD47(1000.0)
-        elif i.type == 'eg':
-            daeronData[-1]['TCO2eq'] = 25.0
-            daeronData[-1]['D47nominal'] = xlcor47_modified.CO2eqD47(25.0)
+    if useCarbStandards:
+        for i in analyses:
+            daeronData.append({'label': i.name, 'd45': i.d45, 'd46':i.d46,'d47': i.d47, 'd48': i.d48, 'd49': i.d49,
+            'sd47': i.d47_stdev/np.sqrt(len(i.acqs)-i.skipFirstAcq), 'D17O': 0.0, 'd13Cwg_pdb': i.acqs[0].d13Cref, 'd18Owg_pdbco2': (i.acqs[0].d18Oref - 41.48693)/1.04148693,
+            'D47raw': i.D47_raw, 'D47_raw_sterr': i.D47_sterr} )
+            if i.type == 'hg':
+                daeronData[-1]['TCO2eq'] = 1000.0
+                daeronData[-1]['D47nominal'] = xlcor47_modified.CO2eqD47(1000.0)
+            elif i.type == 'eg':
+                daeronData[-1]['TCO2eq'] = 25.0
+                daeronData[-1]['D47nominal'] = xlcor47_modified.CO2eqD47(25.0)
+            elif i.type == 'std':
+                if 'carrara' in i.name.lower():
+                    daeronData[-1]['D47nominal'] = CIT_Carrara_ARF - acid_correction_dict[i.rxnTemp]
+                    daeronData[-1]['TCO2eq'] = np.nan
+                elif 'tv03' in i.name.lower():
+                    daeronData[-1]['D47nominal'] = TV03_ARF - acid_correction_dict[i.rxnTemp]
+                    daeronData[-1]['TCO2eq'] = np.nan
+                elif 'nbs-19' in i.name.lower():
+                    daeronData[-1]['D47nominal'] = NBS_19_ARF - acid_correction_dict[i.rxnTemp]
+                    daeronData[-1]['TCO2eq'] = np.nan
+                elif 'gc-az' in i.name.lower():
+                    daeronData[-1]['D47nominal'] = GC_AZ_ARF - acid_correction_dict[i.rxnTemp]
+                    daeronData[-1]['TCO2eq'] = np.nan
+                elif 'gc_az' in i.name.lower():
+                    daeronData[-1]['D47nominal'] = GC_AZ_ARF - acid_correction_dict[i.rxnTemp]
+                    daeronData[-1]['TCO2eq'] = np.nan
+                elif 'tv04' in i.name.lower():
+                    daeronData[-1]['D47nominal'] = TV03_ARF - acid_correction_dict[i.rxnTemp]
+                    daeronData[-1]['TCO2eq'] = np.nan
+
+    else:
+        for i in analyses:
+            daeronData.append({'label': i.name, 'd45': i.d45, 'd46':i.d46,'d47': i.d47, 'd48': i.d48, 'd49': i.d49,
+            'sd47': i.d47_stdev/np.sqrt(len(i.acqs)-i.skipFirstAcq), 'D17O': 0.0, 'd13Cwg_pdb': i.acqs[0].d13Cref, 'd18Owg_pdbco2': (i.acqs[0].d18Oref - 41.48693)/1.04148693,
+            'D47raw': i.D47_raw, 'D47_raw_sterr': i.D47_sterr} )
+            if i.type == 'hg':
+                daeronData[-1]['TCO2eq'] = 1000.0
+                daeronData[-1]['D47nominal'] = xlcor47_modified.CO2eqD47(1000.0)
+            elif i.type == 'eg':
+                daeronData[-1]['TCO2eq'] = 25.0
+                daeronData[-1]['D47nominal'] = xlcor47_modified.CO2eqD47(25.0)
     return(daeronData)
 
 def Daeron_data_processer(analyses, showFigures = False):
     '''Performs Daeron-style correction to put clumped isotope data into the ARF'''
+    useCarbStandards = False
+    askCarbStandards = raw_input('Use carbonate standards for ARF correction? (y/n) ').lower()
+    if askCarbStandards == 'y':
+        useCarbStandards = True
 
-    daeronData = Daeron_data_creator(analyses)
+    daeronData = Daeron_data_creator(analyses, useCarbStandards)
 
     global daeronBestFitParams, CorrelationMatrix
     daeronBestFitParams, CorrelationMatrix = xlcor47_modified.process_data(daeronData)
