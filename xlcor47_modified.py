@@ -221,9 +221,11 @@ def plot_data( data, f, CM, filename ) :
 
 	xleft, xright, ybottom, ytop = mpl.axis()
 	xi = np.linspace( xleft, xright )
-	TCO2eq = list( set( [ d['TCO2eq'] for d in data if 'TCO2eq' in d ] ) )
-	for T in TCO2eq :
-		D47nominal = CO2eqD47( T )
+	# TCO2eq = list( set( [ d['TCO2eq'] for d in data if 'TCO2eq' in d ] ) )
+	D47_nominal_eq = list( set( [ d['D47nominal'] for d in data if 'D47nominal' in d ] ) )
+
+	for D in D47_nominal_eq :
+		D47nominal = D
 		yi = a * D47nominal + b * xi + c
 		dydx = b
 		dyda = D47nominal
