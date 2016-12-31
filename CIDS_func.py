@@ -155,7 +155,7 @@ class CI(object):
         self.skipFirstAcq = True
         self.TCO2 = np.nan
         self.D48_excess = False
-        self.useBrand2010 = True
+        self.useBrand2010 = False
         self.rxnTemp = 90
         self.mineral = 'calcite'
 
@@ -213,7 +213,7 @@ class ACQUISITION(object):
         self.d18Oref = 0
         self.date=''
         self.time=''
-        self.useBrand2010 = True
+        self.useBrand2010 = False
         self.pressureVals = [np.nan,np.nan,np.nan]
         # self.rxnTemp = 90
         # self.mineral = 'calcite'
@@ -261,6 +261,110 @@ def murray_acid_equation(T_c):
     ln_alpha = m*10**6/T_k**2 + b
 
     return(ln_alpha)
+def bulk_comp_brand_2010(acq, objName):
+    ''' Brand 2010 style calculation of bulk composition'''
+    lambda_17 = 0.528
+    K = 0.01022451
+    vsmow_R18 = 0.0020052
+    vsmow_R17 = 0.00038475
+    vpdb_R13 = 0.011180
+
+    # Derived quantities
+    vpdb_R18 = vsmow_R18*1.03092*1.01025
+    # vpdb_R17 = vsmow_R17*(1.03092*1.01025)**lambda_17
+
+    # vpdb_R18 = 0.002088389
+    vpdb_R17 = 0.00039310
+
+    # Dummy holder eventually need to add in D17 of sample
+    D17O_anomaly = 0
+    K_general = np.exp(D17O_anomaly)*vpdb_R17*vpdb_R18**-lambda_17
+
+
+    # convert wg d18O to vpdb, using the recommended value of Coplen et al., 1983 (once NBS-19 is corrected to +2.2 permille)
+    d18Oref_vpdb = (acq.d18Oref-41.48693)/1.04148693
+
+    # Calculate working gas ratios
+    R13_ref=(acq.d13Cref/1000+1)*vpdb_R13
+    R18_ref=(d18Oref_vpdb/1000+1)*vpdb_R18
+    R17_ref=np.power((R18_ref/vpdb_R18),lambda_17)*vpdb_R17
+
+    # calculating measured voltage ratios, with sample/ref bracketing
+    R_measured_analysis=(acq.voltSam[:,1:6]/(np.tile(acq.voltSam[:,0],(5,1)).T))
+    R_measured_ref=(acq.voltRef[:,1:6]/(np.tile(acq.voltRef[:,0],(5,1)).T))
+    delta_measured=np.zeros(np.shape(R_measured_analysis)) # Preallocating for size of delta array
+
+    for l in range(len(R_measured_analysis)):
+        delta_measured[l,:]=(R_measured_analysis[l,:]/((R_measured_ref[l,:]+R_measured_ref[l+1,:])/2)-1)*1000
+    # couches ratios in analysis/std bracketing, put in delta notation
+
+    delta_measured_mean=np.zeros((3,delta_measured.shape[1]))
+
+    delta_measured_mean[0,:]=np.mean(delta_measured, axis=0) # averaging for all cycles
+    delta_measured_mean[1,:]=np.std(delta_measured, axis=0,ddof=1)  # standard deviation among all cycles
+    delta_measured_mean[2,:]=delta_measured_mean[1,:]/np.sqrt(len(delta_measured)) # std error among all cycles
+
+    # Calculate ref gas stochastic ratios
+    R45_ref_stoch = R13_ref + 2*R17_ref
+    R46_ref_stoch=2*R13_ref*R17_ref+R17_ref*R17_ref+2*R18_ref
+    R47_ref_stoch=2*R13_ref*R18_ref+2*R17_ref*R18_ref+R13_ref*R17_ref*R17_ref
+    R48_ref_stoch=2*R17_ref*R18_ref*R13_ref+R18_ref*R18_ref
+    R49_ref_stoch=R13_ref*R18_ref*R18_ref
+
+    # assemble into array
+    R_ref_stoch = np.array([R45_ref_stoch, R46_ref_stoch, R47_ref_stoch, R48_ref_stoch, R49_ref_stoch])
+    # multiply by deltas to get 'true' ratios in sample gas. This assumes that wg is stochastic in composition
+    R_measured_mean = (delta_measured_mean[0,:]/1000+1)*R_ref_stoch
+    # # assemble extra arguments tuple to pass to solver
+    # extraArgs = (R_measured_mean[0:3], lambda_17, K,)
+    # # inital guess from true ratios of wg. Order is 13C, 17O, 18O
+    # R_guess_init = [R13_ref, R17_ref, R18_ref]
+    # # Minimize residuals for bulk solver
+    # bulk_comp_result = root(bulk_comp_solver, R_guess_init, args = extraArgs, method = 'lm', options = {'xtol':1e-20, 'ftol':1e-20})
+    # r13C_brand, r17O_brand, r18O_brand = bulk_comp_result.x
+
+    # TAYLOR POLYNOMIAL VERSION OF THE SAME
+    # From Daeron et al., 2016, Appendix B
+    # Calculate K specifically for the ref gas composition
+    K = np.exp(D17O_anomaly) * vpdb_R17 * vpdb_R18 ** -lambda_17
+    #taylor polynomials of the d46-d18O equations
+    A_taylor = -3 * K**2 * (vpdb_R18**(2*lambda_17))
+    B_taylor = 2 * K * R_measured_mean[0]*(vpdb_R18**lambda_17)
+    C_taylor = 2 * vpdb_R18
+    D_taylor = -R_measured_mean[1]
+
+    a_taylor = A_taylor*lambda_17*(2*lambda_17-1) + B_taylor*lambda_17*(lambda_17-1)/2
+    b_taylor = 2*A_taylor*lambda_17+B_taylor*lambda_17+C_taylor
+    c_taylor = A_taylor + B_taylor + C_taylor + D_taylor
+    # solve using quadratic eqn
+    # in vpdb_co2 space
+    d18O_taylor = 1000*(-b_taylor + (b_taylor**2-4*a_taylor*c_taylor)**0.5)/(2*a_taylor)
+    R18_taylor = (d18O_taylor/1000+1)*vpdb_R18
+    R17_taylor = K * R18_taylor**lambda_17
+    R13_taylor = R_measured_mean[0] - 2*R17_taylor
+    d13C_taylor = (R13_taylor/vpdb_R13-1)*1000
+
+    d13C_vpdb_brand = d13C_taylor
+    d18O_vpdb_brand = d18O_taylor
+    d18O_vsmow_brand = d18O_vpdb_brand*1.04148693 + 41.48693
+
+
+    #assemble dict
+    bulk_comps = {'d13C_brand': d13C_vpdb_brand, 'd18O_brand': d18O_vsmow_brand, 'd18O_taylor': d18O_taylor, 'd13C_taylor': d13C_taylor}
+    return(bulk_comps[objName])
+
+def Brand_2010_bulk_comp_setter(analyses):
+    'sets all acqs bulk comps to the Brand 2010-derived values'
+
+    for i in analyses:
+        i.useBrand2010 = True
+        for j in i.acqs:
+            j.d13C = j.d13C_brand
+            j.d18O_gas = j.d18O_brand
+            j.useBrand2010 = True
+
+    return
+
 
 def carb_gas_oxygen_fractionation_acq(instance):
     '''calculates the d18O of a carbonate mineral from which the CO2 was digested'''
@@ -284,276 +388,6 @@ def carb_gas_oxygen_fractionation_acq(instance):
 
     d18O_min = ((d18O_vpdb+1000)/rxnFrac[rxnKey])-1000
     return d18O_min
-
-def Isodat_File_Parser(fileName):
-    '''Reads in a .did file (Isodat acquisition file), returns the raw voltages for
-    ref gas, analysis gas, and the isodat-calculated d13C and d18O of the Acquisition'''
-
-    f=open(fileName,'rb')
-    try:
-        buff = f.read()
-    finally:
-        f.close()
-
-    #1. Getting raw voltage data
-    #Searching for the start of the raw voltages
-    start=buff.find('CIntensityData')
-    keys=[]
-    voltRef_raw=[]
-    voltSam_raw=[]
-    #Slightly elegant method: pulling out based on spacing after 'CIntensityData' ascii key
-    # TODO: make this more flexible
-    # TODO: Catch errors if wrong voltage sequence found
-    startPreVolt=start+2304+168 #observed location of 'pre' cycle on ref gas side
-    voltRef_raw.append(struct.unpack('6d',buff[startPreVolt:(startPreVolt+6*8)]))
-    for i in range(7):
-        startRefVolt=start+52+i*164 #observed location of ref gas voltage cycles
-        voltRef_raw.append(struct.unpack('6d',buff[startRefVolt:(startRefVolt+6*8)]))
-
-        startSamVolt=start+1344+i*160 #observed location of sample gas voltage cycles
-        voltSam_raw.append(struct.unpack('6d',buff[startSamVolt:(startSamVolt+6*8)]))
-
-    #2. Getting d13C and d18O data for each cycle
-    startEval=buff.find('CDualInletEvaluatedDataCollect') #rough guess of starting position
-    d13C=[]
-    d18O=[]
-    # Exact position is not consistent, so running searching over a 200 byte range for the right start point
-    # This hinges on recognition of pattern where an alternating sequence of 8-bit doubles of cycle number (starting with zero) and bulk isotopic composition for that number
-    found13Cstart=False
-    found18Ostart=False
-    while i < 200 and not (found13Cstart and found18Ostart) :
-
-        if not found13Cstart:
-            start13C = startEval+720+i
-            testList1=struct.unpack('ddd',buff[start13C:start13C+8] + buff[start13C+16:start13C+16+8] + buff[start13C+32:start13C+32+8])
-            if testList1 == (1.0, 2.0, 3.0):
-                found13Cstart=True
-
-        if not found18Ostart:
-            start18O = startEval+1000+i
-            testList2=struct.unpack('ddd',buff[start18O:start18O+8] + buff[start18O+16:start18O+16+8] + buff[start18O+32:start18O+32+8])
-            if testList2 == (1.0, 2.0, 3.0):
-                found18Ostart=True
-        i+=1
-
-    # Alerting if one of the search sequences failed
-    if not found13Cstart:
-        print('Failed to find an appropriate byte sequence for d13C')
-
-    if not found18Ostart:
-        print('Failed to find the appropriate byte sequence for d18O')
-
-
-    # Now, actually pulling bulk isotope data based on start13C and start18O variables
-
-    for i in range(7):
-        # start13C=newstartEval-1461+16*i #observed location of ref gas voltage cycles
-        d13C.append(struct.unpack('d',buff[start13C-8+16*i:(start13C+16*i)])[0])
-
-        # start18O=newstartEval-1188+16*i
-        d18O.append(struct.unpack('d',buff[start18O-8+16*i:(start18O+16*i)])[0])
-
-    # Averaging d13C and d18O for each cycle
-    d13C_final = sum(d13C)/len(d13C)
-    d18O_final = sum(d18O)/len(d18O)
-
-    #3. Pulling out other auxiliary info
-    # 3.1 Ref gas isotope composition
-    startRefGas=buff.find('CEvalDataSecStdTransferPart')
-
-    d13C_ref=struct.unpack('d',buff[startRefGas+203:startRefGas+203+8])[0]
-    d18O_ref=struct.unpack('d',buff[startRefGas+423:startRefGas+423+8])[0]
-
-    # 3.2 whether or not method is a CO2_multiply or a *_start
-    firstAcq = False
-    startMethod = buff.find('CDualInletBlockData')
-    methodBlock = buff[startMethod-120:startMethod-20].decode('utf-16')
-    # if 'CO2_multiply_16V' in methodBlock:
-    #     firstAcq = False
-    # if 'Contin_Start' in methodBlock:
-    #     lastAcq = True
-    #     #TODO: make this a more robust test
-    if 'AL_Pump_Trans' in methodBlock:
-        firstAcq = True
-
-    # 3.3 sample name
-    # Find start of block with sample name
-    startName = buff.find('CSeqLineIndexData')
-    # Rough guess of range where analysis name is, accounting for a large variation in length
-    nameBlock = buff[startName+200:startName+400].decode('utf-16')
-    #Exact name based on locations of unicode strings directly before and after
-    analysisName = nameBlock[(nameBlock.find('Background')+18):(nameBlock.find('Identifier 1')-2)]
-    # Encode as ascii for consistency
-    analysisName = analysisName.encode('ascii')
-
-    # 3.4 background values, and Pressure values
-    #find start of block with background values
-    startBackground = buff.find('CISLScriptMessageData')
-    stopBackground = buff.find('CMeasurmentErrors')
-    #Note incorrect spelling of 'measurement' is intentional
-    backgroundBlock = buff[startBackground+32:stopBackground].decode('utf-16', errors = 'ignore')
-    # Pulling floats out of block
-    backgroundVals = re.findall('[0-9]{1,20}\.[0-9]{1,10}', backgroundBlock)
-    # Only want to take P values if they exist, bc a new acq with Brett's modified code
-    if '100precent' in backgroundBlock:
-        # pressure vals are first, and last two in block
-        pressureVals = [float(backgroundVals[0]), float(backgroundVals[-2]), float(backgroundVals[-1])]
-    else:
-        pressureVals = [np.nan,np.nan,np.nan]
-    # Background vals are other ones, but ignoring these for now
-
-
-
-    # 3.5 Date and Time
-    # Find the start of Ctime block
-    startTime = buff.find('CTimeObject')+49
-    # Pull out the time_t time based on startTime location, seconds since the epoch (Jan 1st, 1970), GMT
-    time_t_time = struct.unpack('i',buff[startTime:startTime+4])[0]
-    # time_str = time.strftime('%m/%d/%Y %H:%M:%S', time.localtime(time_t_time))
-    time_str = time.strftime('%m/%d/%Y', time.localtime(time_t_time))
-
-
-    return voltRef_raw, voltSam_raw, d13C_final, d18O_final, d13C_ref, d18O_ref, analysisName, firstAcq, time_str, pressureVals
-
-def Isodat_File_Parser_CAF(fileName):
-    '''Reads in a .caf file (Classical aquisition file), returns the raw voltages for
-    ref gas, analysis gas, and the isodat-calculated d13C and d18O of the Acquisition'''
-
-    f=open(fileName,'rb')
-    try:
-        buff = f.read()
-    finally:
-        f.close()
-
-    #1. Getting raw voltage data
-    #Searching for the start of the raw voltages
-    start=buff.find('CDualInletRawData')
-    keys=[]
-    voltRef_raw=[]
-    voltSam_raw=[]
-    #Slightly elegant method: pulling out based on spacing after 'CIntensityData' ascii key
-    # TODO: make this more flexible
-    # TODO: Catch errors if wrong voltage sequence found
-    startPreVolt=start+2304+168 #observed location of 'pre' cycle on ref gas side
-    voltRef_raw.append(struct.unpack('6d',buff[startPreVolt:(startPreVolt+6*8)]))
-    for i in range(7):
-        startRefVolt=start+52+i*164 #observed location of ref gas voltage cycles
-        voltRef_raw.append(struct.unpack('6d',buff[startRefVolt:(startRefVolt+6*8)]))
-
-        startSamVolt=start+1344+i*160 #observed location of sample gas voltage cycles
-        voltSam_raw.append(struct.unpack('6d',buff[startSamVolt:(startSamVolt+6*8)]))
-
-    # test of where voltages are
-    voltTest = []
-    for i in range(len(buff)):
-        thisStart = start + 2 + i
-        theseVolts = np.array(struct.unpack('6d', buff[thisStart:(thisStart+6*8)]))
-        if (theseVolts > 1e4).all() and (theseVolts < 1e6).all():
-            print('Acceptable sequence at: {0}'.format(thisStart))
-            voltTest.append(theseVolts)
-
-    #2. Getting d13C and d18O data for each cycle
-    startEval=buff.find('CDualInletEvaluatedDataCollect') #rough guess of starting position
-    d13C=[]
-    d18O=[]
-    # Exact position is not consistent, so running searching over a 200 byte range for the right start point
-    # This hinges on recognition of pattern where an alternating sequence of 8-bit doubles of cycle number (starting with zero) and bulk isotopic composition for that number
-    found13Cstart=False
-    found18Ostart=False
-    while i < 200 and not (found13Cstart and found18Ostart) :
-
-        if not found13Cstart:
-            start13C = startEval+720+i
-            testList1=struct.unpack('ddd',buff[start13C:start13C+8] + buff[start13C+16:start13C+16+8] + buff[start13C+32:start13C+32+8])
-            if testList1 == (1.0, 2.0, 3.0):
-                found13Cstart=True
-
-        if not found18Ostart:
-            start18O = startEval+1000+i
-            testList2=struct.unpack('ddd',buff[start18O:start18O+8] + buff[start18O+16:start18O+16+8] + buff[start18O+32:start18O+32+8])
-            if testList2 == (1.0, 2.0, 3.0):
-                found18Ostart=True
-        i+=1
-
-    # Alerting if one of the search sequences failed
-    if not found13Cstart:
-        print('Failed to find an appropriate byte sequence for d13C')
-
-    if not found18Ostart:
-        print('Failed to find the appropriate byte sequence for d18O')
-
-
-    # Now, actually pulling bulk isotope data based on start13C and start18O variables
-
-    for i in range(7):
-        # start13C=newstartEval-1461+16*i #observed location of ref gas voltage cycles
-        d13C.append(struct.unpack('d',buff[start13C-8+16*i:(start13C+16*i)])[0])
-
-        # start18O=newstartEval-1188+16*i
-        d18O.append(struct.unpack('d',buff[start18O-8+16*i:(start18O+16*i)])[0])
-
-    # Averaging d13C and d18O for each cycle
-    d13C_final = sum(d13C)/len(d13C)
-    d18O_final = sum(d18O)/len(d18O)
-
-    #3. Pulling out other auxiliary info
-    # 3.1 Ref gas isotope composition
-    startRefGas=buff.find('CEvalDataSecStdTransferPart')
-
-    d13C_ref=struct.unpack('d',buff[startRefGas+203:startRefGas+203+8])[0]
-    d18O_ref=struct.unpack('d',buff[startRefGas+423:startRefGas+423+8])[0]
-
-    # 3.2 whether or not method is a CO2_multiply or a *_start
-    firstAcq = False
-    startMethod = buff.find('CDualInletBlockData')
-    methodBlock = buff[startMethod-120:startMethod-20].decode('utf-16')
-    # if 'CO2_multiply_16V' in methodBlock:
-    #     firstAcq = False
-    # if 'Contin_Start' in methodBlock:
-    #     lastAcq = True
-    #     #TODO: make this a more robust test
-    if 'AL_Pump_Trans' in methodBlock:
-        firstAcq = True
-
-    # 3.3 sample name
-    # Find start of block with sample name
-    startName = buff.find('CSeqLineIndexData')
-    # Rough guess of range where analysis name is, accounting for a large variation in length
-    nameBlock = buff[startName+200:startName+400].decode('utf-16')
-    #Exact name based on locations of unicode strings directly before and after
-    analysisName = nameBlock[(nameBlock.find('Background')+18):(nameBlock.find('Identifier 1')-2)]
-    # Encode as ascii for consistency
-    analysisName = analysisName.encode('ascii')
-
-    # 3.4 background values, and Pressure values
-    #find start of block with background values
-    startBackground = buff.find('CISLScriptMessageData')
-    stopBackground = buff.find('CMeasurmentErrors')
-    #Note incorrect spelling of 'measurement' is intentional
-    backgroundBlock = buff[startBackground+32:stopBackground].decode('utf-16', errors = 'ignore')
-    # Pulling floats out of block
-    backgroundVals = re.findall('[0-9]{1,20}\.[0-9]{1,10}', backgroundBlock)
-    # Only want to take P values if they exist, bc a new acq with Brett's modified code
-    if '100precent' in backgroundBlock:
-        # pressure vals are first, and last two in block
-        pressureVals = [float(backgroundVals[0]), float(backgroundVals[-2]), float(backgroundVals[-1])]
-    else:
-        pressureVals = [np.nan,np.nan,np.nan]
-    # Background vals are other ones, but ignoring these for now
-
-
-
-    # 3.5 Date and Time
-    # Find the start of Ctime block
-    startTime = buff.find('CTimeObject')+49
-    # Pull out the time_t time based on startTime location, seconds since the epoch (Jan 1st, 1970), GMT
-    time_t_time = struct.unpack('i',buff[startTime:startTime+4])[0]
-    # time_str = time.strftime('%m/%d/%Y %H:%M:%S', time.localtime(time_t_time))
-    time_str = time.strftime('%m/%d/%Y', time.localtime(time_t_time))
-
-
-    return voltRef_raw, voltSam_raw, d13C_final, d18O_final, d13C_ref, d18O_ref, analysisName, firstAcq, time_str, pressureVals
-
 def CIDS_parser(filePath):
     '''Reads in a .csv CIDS file, pulls out voltages, calculated bulk isotopes, and
     relevant sample information'''
@@ -861,6 +695,277 @@ def CIDS_importer(filePath, displayProgress = False):
     fileImport.close()
     return analyses
 
+
+def Isodat_File_Parser(fileName):
+    '''Reads in a .did file (Isodat acquisition file), returns the raw voltages for
+    ref gas, analysis gas, and the isodat-calculated d13C and d18O of the Acquisition'''
+
+    f=open(fileName,'rb')
+    try:
+        buff = f.read()
+    finally:
+        f.close()
+
+    #1. Getting raw voltage data
+    #Searching for the start of the raw voltages
+    start=buff.find('CIntensityData')
+    keys=[]
+    voltRef_raw=[]
+    voltSam_raw=[]
+    #Slightly elegant method: pulling out based on spacing after 'CIntensityData' ascii key
+    # TODO: make this more flexible
+    # TODO: Catch errors if wrong voltage sequence found
+    startPreVolt=start+2304+168 #observed location of 'pre' cycle on ref gas side
+    voltRef_raw.append(struct.unpack('6d',buff[startPreVolt:(startPreVolt+6*8)]))
+    for i in range(7):
+        startRefVolt=start+52+i*164 #observed location of ref gas voltage cycles
+        voltRef_raw.append(struct.unpack('6d',buff[startRefVolt:(startRefVolt+6*8)]))
+
+        startSamVolt=start+1344+i*160 #observed location of sample gas voltage cycles
+        voltSam_raw.append(struct.unpack('6d',buff[startSamVolt:(startSamVolt+6*8)]))
+
+    #2. Getting d13C and d18O data for each cycle
+    startEval=buff.find('CDualInletEvaluatedDataCollect') #rough guess of starting position
+    d13C=[]
+    d18O=[]
+    # Exact position is not consistent, so running searching over a 200 byte range for the right start point
+    # This hinges on recognition of pattern where an alternating sequence of 8-bit doubles of cycle number (starting with zero) and bulk isotopic composition for that number
+    found13Cstart=False
+    found18Ostart=False
+    while i < 200 and not (found13Cstart and found18Ostart) :
+
+        if not found13Cstart:
+            start13C = startEval+720+i
+            testList1=struct.unpack('ddd',buff[start13C:start13C+8] + buff[start13C+16:start13C+16+8] + buff[start13C+32:start13C+32+8])
+            if testList1 == (1.0, 2.0, 3.0):
+                found13Cstart=True
+
+        if not found18Ostart:
+            start18O = startEval+1000+i
+            testList2=struct.unpack('ddd',buff[start18O:start18O+8] + buff[start18O+16:start18O+16+8] + buff[start18O+32:start18O+32+8])
+            if testList2 == (1.0, 2.0, 3.0):
+                found18Ostart=True
+        i+=1
+
+    # Alerting if one of the search sequences failed
+    if not found13Cstart:
+        print('Failed to find an appropriate byte sequence for d13C')
+
+    if not found18Ostart:
+        print('Failed to find the appropriate byte sequence for d18O')
+
+
+    # Now, actually pulling bulk isotope data based on start13C and start18O variables
+
+    for i in range(7):
+        # start13C=newstartEval-1461+16*i #observed location of ref gas voltage cycles
+        d13C.append(struct.unpack('d',buff[start13C-8+16*i:(start13C+16*i)])[0])
+
+        # start18O=newstartEval-1188+16*i
+        d18O.append(struct.unpack('d',buff[start18O-8+16*i:(start18O+16*i)])[0])
+
+    # Averaging d13C and d18O for each cycle
+    d13C_final = sum(d13C)/len(d13C)
+    d18O_final = sum(d18O)/len(d18O)
+
+    #3. Pulling out other auxiliary info
+    # 3.1 Ref gas isotope composition
+    startRefGas=buff.find('CEvalDataSecStdTransferPart')
+
+    d13C_ref=struct.unpack('d',buff[startRefGas+203:startRefGas+203+8])[0]
+    d18O_ref=struct.unpack('d',buff[startRefGas+423:startRefGas+423+8])[0]
+
+    # 3.2 whether or not method is a CO2_multiply or a *_start
+    firstAcq = False
+    startMethod = buff.find('CDualInletBlockData')
+    methodBlock = buff[startMethod-120:startMethod-20].decode('utf-16')
+    # if 'CO2_multiply_16V' in methodBlock:
+    #     firstAcq = False
+    # if 'Contin_Start' in methodBlock:
+    #     lastAcq = True
+    #     #TODO: make this a more robust test
+    if 'AL_Pump_Trans' in methodBlock:
+        firstAcq = True
+
+    # 3.3 sample name
+    # Find start of block with sample name
+    startName = buff.find('CSeqLineIndexData')
+    # Rough guess of range where analysis name is, accounting for a large variation in length
+    nameBlock = buff[startName+200:startName+400].decode('utf-16')
+    #Exact name based on locations of unicode strings directly before and after
+    analysisName = nameBlock[(nameBlock.find('Background')+18):(nameBlock.find('Identifier 1')-2)]
+    # Encode as ascii for consistency
+    analysisName = analysisName.encode('ascii')
+
+    # 3.4 background values, and Pressure values
+    #find start of block with background values
+    startBackground = buff.find('CISLScriptMessageData')
+    stopBackground = buff.find('CMeasurmentErrors')
+    #Note incorrect spelling of 'measurement' is intentional
+    backgroundBlock = buff[startBackground+32:stopBackground].decode('utf-16', errors = 'ignore')
+    # Pulling floats out of block
+    backgroundVals = re.findall('[0-9]{1,20}\.[0-9]{1,10}', backgroundBlock)
+    # Only want to take P values if they exist, bc a new acq with Brett's modified code
+    if '100precent' in backgroundBlock:
+        # pressure vals are first, and last two in block
+        pressureVals = [float(backgroundVals[0]), float(backgroundVals[-2]), float(backgroundVals[-1])]
+    else:
+        pressureVals = [np.nan,np.nan,np.nan]
+    # Background vals are other ones, but ignoring these for now
+
+
+
+    # 3.5 Date and Time
+    # Find the start of Ctime block
+    startTime = buff.find('CTimeObject')+49
+    # Pull out the time_t time based on startTime location, seconds since the epoch (Jan 1st, 1970), GMT
+    time_t_time = struct.unpack('i',buff[startTime:startTime+4])[0]
+    # time_str = time.strftime('%m/%d/%Y %H:%M:%S', time.localtime(time_t_time))
+    time_str = time.strftime('%m/%d/%Y', time.localtime(time_t_time))
+
+
+    return voltRef_raw, voltSam_raw, d13C_final, d18O_final, d13C_ref, d18O_ref, analysisName, firstAcq, time_str, pressureVals
+
+def Isodat_File_Parser_CAF(fileName):
+    '''Reads in a .caf file (Classical aquisition file), returns the raw voltages for
+    ref gas, analysis gas, and the isodat-calculated d13C and d18O of the Acquisition'''
+
+    f=open(fileName,'rb')
+    try:
+        buff = f.read()
+    finally:
+        f.close()
+
+    #1. Getting raw voltage data
+    #Searching for the start of the raw voltages
+    start=buff.find('CDualInletRawData')
+    keys=[]
+    voltRef_raw=[]
+    voltSam_raw=[]
+    #Slightly elegant method: pulling out based on spacing after 'CIntensityData' ascii key
+    # TODO: make this more flexible
+    # TODO: Catch errors if wrong voltage sequence found
+    startPreVolt=start+2304+168 #observed location of 'pre' cycle on ref gas side
+    voltRef_raw.append(struct.unpack('6d',buff[startPreVolt:(startPreVolt+6*8)]))
+    for i in range(7):
+        startRefVolt=start+52+i*164 #observed location of ref gas voltage cycles
+        voltRef_raw.append(struct.unpack('6d',buff[startRefVolt:(startRefVolt+6*8)]))
+
+        startSamVolt=start+1344+i*160 #observed location of sample gas voltage cycles
+        voltSam_raw.append(struct.unpack('6d',buff[startSamVolt:(startSamVolt+6*8)]))
+
+    # test of where voltages are
+    voltTest = []
+    for i in range(len(buff)):
+        thisStart = start + 2 + i
+        theseVolts = np.array(struct.unpack('6d', buff[thisStart:(thisStart+6*8)]))
+        if (theseVolts > 1e4).all() and (theseVolts < 1e6).all():
+            print('Acceptable sequence at: {0}'.format(thisStart))
+            voltTest.append(theseVolts)
+
+    #2. Getting d13C and d18O data for each cycle
+    startEval=buff.find('CDualInletEvaluatedDataCollect') #rough guess of starting position
+    d13C=[]
+    d18O=[]
+    # Exact position is not consistent, so running searching over a 200 byte range for the right start point
+    # This hinges on recognition of pattern where an alternating sequence of 8-bit doubles of cycle number (starting with zero) and bulk isotopic composition for that number
+    found13Cstart=False
+    found18Ostart=False
+    while i < 200 and not (found13Cstart and found18Ostart) :
+
+        if not found13Cstart:
+            start13C = startEval+720+i
+            testList1=struct.unpack('ddd',buff[start13C:start13C+8] + buff[start13C+16:start13C+16+8] + buff[start13C+32:start13C+32+8])
+            if testList1 == (1.0, 2.0, 3.0):
+                found13Cstart=True
+
+        if not found18Ostart:
+            start18O = startEval+1000+i
+            testList2=struct.unpack('ddd',buff[start18O:start18O+8] + buff[start18O+16:start18O+16+8] + buff[start18O+32:start18O+32+8])
+            if testList2 == (1.0, 2.0, 3.0):
+                found18Ostart=True
+        i+=1
+
+    # Alerting if one of the search sequences failed
+    if not found13Cstart:
+        print('Failed to find an appropriate byte sequence for d13C')
+
+    if not found18Ostart:
+        print('Failed to find the appropriate byte sequence for d18O')
+
+
+    # Now, actually pulling bulk isotope data based on start13C and start18O variables
+
+    for i in range(7):
+        # start13C=newstartEval-1461+16*i #observed location of ref gas voltage cycles
+        d13C.append(struct.unpack('d',buff[start13C-8+16*i:(start13C+16*i)])[0])
+
+        # start18O=newstartEval-1188+16*i
+        d18O.append(struct.unpack('d',buff[start18O-8+16*i:(start18O+16*i)])[0])
+
+    # Averaging d13C and d18O for each cycle
+    d13C_final = sum(d13C)/len(d13C)
+    d18O_final = sum(d18O)/len(d18O)
+
+    #3. Pulling out other auxiliary info
+    # 3.1 Ref gas isotope composition
+    startRefGas=buff.find('CEvalDataSecStdTransferPart')
+
+    d13C_ref=struct.unpack('d',buff[startRefGas+203:startRefGas+203+8])[0]
+    d18O_ref=struct.unpack('d',buff[startRefGas+423:startRefGas+423+8])[0]
+
+    # 3.2 whether or not method is a CO2_multiply or a *_start
+    firstAcq = False
+    startMethod = buff.find('CDualInletBlockData')
+    methodBlock = buff[startMethod-120:startMethod-20].decode('utf-16')
+    # if 'CO2_multiply_16V' in methodBlock:
+    #     firstAcq = False
+    # if 'Contin_Start' in methodBlock:
+    #     lastAcq = True
+    #     #TODO: make this a more robust test
+    if 'AL_Pump_Trans' in methodBlock:
+        firstAcq = True
+
+    # 3.3 sample name
+    # Find start of block with sample name
+    startName = buff.find('CSeqLineIndexData')
+    # Rough guess of range where analysis name is, accounting for a large variation in length
+    nameBlock = buff[startName+200:startName+400].decode('utf-16')
+    #Exact name based on locations of unicode strings directly before and after
+    analysisName = nameBlock[(nameBlock.find('Background')+18):(nameBlock.find('Identifier 1')-2)]
+    # Encode as ascii for consistency
+    analysisName = analysisName.encode('ascii')
+
+    # 3.4 background values, and Pressure values
+    #find start of block with background values
+    startBackground = buff.find('CISLScriptMessageData')
+    stopBackground = buff.find('CMeasurmentErrors')
+    #Note incorrect spelling of 'measurement' is intentional
+    backgroundBlock = buff[startBackground+32:stopBackground].decode('utf-16', errors = 'ignore')
+    # Pulling floats out of block
+    backgroundVals = re.findall('[0-9]{1,20}\.[0-9]{1,10}', backgroundBlock)
+    # Only want to take P values if they exist, bc a new acq with Brett's modified code
+    if '100precent' in backgroundBlock:
+        # pressure vals are first, and last two in block
+        pressureVals = [float(backgroundVals[0]), float(backgroundVals[-2]), float(backgroundVals[-1])]
+    else:
+        pressureVals = [np.nan,np.nan,np.nan]
+    # Background vals are other ones, but ignoring these for now
+
+
+
+    # 3.5 Date and Time
+    # Find the start of Ctime block
+    startTime = buff.find('CTimeObject')+49
+    # Pull out the time_t time based on startTime location, seconds since the epoch (Jan 1st, 1970), GMT
+    time_t_time = struct.unpack('i',buff[startTime:startTime+4])[0]
+    # time_str = time.strftime('%m/%d/%Y %H:%M:%S', time.localtime(time_t_time))
+    time_str = time.strftime('%m/%d/%Y', time.localtime(time_t_time))
+
+
+    return voltRef_raw, voltSam_raw, d13C_final, d18O_final, d13C_ref, d18O_ref, analysisName, firstAcq, time_str, pressureVals
+
+
 def Get_carbonate_stds(analyses):
     '''Finds which analyses are carbonate standards, and assigns them accepted D47nominal values'''
     acid_correction_dict = {90: 0.092, 50: 0.040, 25: 0.0}
@@ -999,109 +1104,6 @@ def Pressure_Baseline_Processer(fileFolder):
 
 
     return int44, int49, minimums
-def bulk_comp_brand_2010(acq, objName):
-    ''' Brand 2010 style calculation of bulk composition'''
-    lambda_17 = 0.528
-    K = 0.01022451
-    vsmow_R18 = 0.0020052
-    vsmow_R17 = 0.00038475
-    vpdb_R13 = 0.011180
-
-    # Derived quantities
-    vpdb_R18 = vsmow_R18*1.03092*1.01025
-    # vpdb_R17 = vsmow_R17*(1.03092*1.01025)**lambda_17
-
-    # vpdb_R18 = 0.002088389
-    vpdb_R17 = 0.00039310
-
-    # Dummy holder eventually need to add in D17 of sample
-    D17O_anomaly = 0
-    K_general = np.exp(D17O_anomaly)*vpdb_R17*vpdb_R18**-lambda_17
-
-
-    # convert wg d18O to vpdb, using the recommended value of Coplen et al., 1983 (once NBS-19 is corrected to +2.2 permille)
-    d18Oref_vpdb = (acq.d18Oref-41.48693)/1.04148693
-
-    # Calculate working gas ratios
-    R13_ref=(acq.d13Cref/1000+1)*vpdb_R13
-    R18_ref=(d18Oref_vpdb/1000+1)*vpdb_R18
-    R17_ref=np.power((R18_ref/vpdb_R18),lambda_17)*vpdb_R17
-
-    # calculating measured voltage ratios, with sample/ref bracketing
-    R_measured_analysis=(acq.voltSam[:,1:6]/(np.tile(acq.voltSam[:,0],(5,1)).T))
-    R_measured_ref=(acq.voltRef[:,1:6]/(np.tile(acq.voltRef[:,0],(5,1)).T))
-    delta_measured=np.zeros(np.shape(R_measured_analysis)) # Preallocating for size of delta array
-
-    for l in range(len(R_measured_analysis)):
-        delta_measured[l,:]=(R_measured_analysis[l,:]/((R_measured_ref[l,:]+R_measured_ref[l+1,:])/2)-1)*1000
-    # couches ratios in analysis/std bracketing, put in delta notation
-
-    delta_measured_mean=np.zeros((3,delta_measured.shape[1]))
-
-    delta_measured_mean[0,:]=np.mean(delta_measured, axis=0) # averaging for all cycles
-    delta_measured_mean[1,:]=np.std(delta_measured, axis=0,ddof=1)  # standard deviation among all cycles
-    delta_measured_mean[2,:]=delta_measured_mean[1,:]/np.sqrt(len(delta_measured)) # std error among all cycles
-
-    # Calculate ref gas stochastic ratios
-    R45_ref_stoch = R13_ref + 2*R17_ref
-    R46_ref_stoch=2*R13_ref*R17_ref+R17_ref*R17_ref+2*R18_ref
-    R47_ref_stoch=2*R13_ref*R18_ref+2*R17_ref*R18_ref+R13_ref*R17_ref*R17_ref
-    R48_ref_stoch=2*R17_ref*R18_ref*R13_ref+R18_ref*R18_ref
-    R49_ref_stoch=R13_ref*R18_ref*R18_ref
-
-    # assemble into array
-    R_ref_stoch = np.array([R45_ref_stoch, R46_ref_stoch, R47_ref_stoch, R48_ref_stoch, R49_ref_stoch])
-    # multiply by deltas to get 'true' ratios in sample gas. This assumes that wg is stochastic in composition
-    R_measured_mean = (delta_measured_mean[0,:]/1000+1)*R_ref_stoch
-    # # assemble extra arguments tuple to pass to solver
-    # extraArgs = (R_measured_mean[0:3], lambda_17, K,)
-    # # inital guess from true ratios of wg. Order is 13C, 17O, 18O
-    # R_guess_init = [R13_ref, R17_ref, R18_ref]
-    # # Minimize residuals for bulk solver
-    # bulk_comp_result = root(bulk_comp_solver, R_guess_init, args = extraArgs, method = 'lm', options = {'xtol':1e-20, 'ftol':1e-20})
-    # r13C_brand, r17O_brand, r18O_brand = bulk_comp_result.x
-
-    # TAYLOR POLYNOMIAL VERSION OF THE SAME
-    # From Daeron et al., 2016, Appendix B
-    # Calculate K specifically for the ref gas composition
-    K = np.exp(D17O_anomaly) * vpdb_R17 * vpdb_R18 ** -lambda_17
-    #taylor polynomials of the d46-d18O equations
-    A_taylor = -3 * K**2 * (vpdb_R18**(2*lambda_17))
-    B_taylor = 2 * K * R_measured_mean[0]*(vpdb_R18**lambda_17)
-    C_taylor = 2 * vpdb_R18
-    D_taylor = -R_measured_mean[1]
-
-    a_taylor = A_taylor*lambda_17*(2*lambda_17-1) + B_taylor*lambda_17*(lambda_17-1)/2
-    b_taylor = 2*A_taylor*lambda_17+B_taylor*lambda_17+C_taylor
-    c_taylor = A_taylor + B_taylor + C_taylor + D_taylor
-    # solve using quadratic eqn
-    # in vpdb_co2 space
-    d18O_taylor = 1000*(-b_taylor + (b_taylor**2-4*a_taylor*c_taylor)**0.5)/(2*a_taylor)
-    R18_taylor = (d18O_taylor/1000+1)*vpdb_R18
-    R17_taylor = K * R18_taylor**lambda_17
-    R13_taylor = R_measured_mean[0] - 2*R17_taylor
-    d13C_taylor = (R13_taylor/vpdb_R13-1)*1000
-
-    d13C_vpdb_brand = d13C_taylor
-    d18O_vpdb_brand = d18O_taylor
-    d18O_vsmow_brand = d18O_vpdb_brand*1.04148693 + 41.48693
-
-
-    #assemble dict
-    bulk_comps = {'d13C_brand': d13C_vpdb_brand, 'd18O_brand': d18O_vsmow_brand, 'd18O_taylor': d18O_taylor, 'd13C_taylor': d13C_taylor}
-    return(bulk_comps[objName])
-
-def Brand_2010_bulk_comp_setter(analyses):
-    'sets all acqs bulk comps to the Brand 2010-derived values'
-
-    for i in analyses:
-        i.useBrand2010 = True
-        for j in i.acqs:
-            j.d13C = j.d13C_brand
-            j.d18O_gas = j.d18O_brand
-            j.useBrand2010 = True
-
-    return
 
 def bulk_comp_solver(calcRatios, *extraArgs):
     ''' function to find roots of bulk compositions'''
