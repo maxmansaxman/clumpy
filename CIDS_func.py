@@ -22,6 +22,7 @@ CIT_Carrara_ARF = 0.3115 + 0.092
 NBS_19_ARF = CIT_Carrara_ARF
 TV03_ARF = 0.635 + 0.092
 GC_AZ_ARF = 0.710
+# CIT_Carrara
 
 
 
@@ -250,6 +251,14 @@ def defliese_acid_equation(T_c):
     ln_alpha = m*10**6/T_k**2 + b
 
     return(ln_alpha)
+
+def str_to_bool(s):
+    if s.lower() == 'true':
+         return True
+    elif s.lower() == 'false':
+         return False
+    else:
+         raise ValueError # evil ValueError that doesn't tell you what the wrong value was
 
 def murray_acid_equation(T_c):
     ''' calculates the will defliese phosphoric acid equation'''
@@ -684,7 +693,7 @@ def CIDS_importer(filePath, displayProgress = False):
             summaryIndex = line.index('__SampleSummary__')
             [analyses[-1].user, analyses[-1].date, analyses[-1].type, analyses[-1].name] = line[summaryIndex + 1:summaryIndex+5]
             analyses[-1].num = int(line[summaryIndex + 5])
-            analyses[-1].skipFirstAcq = bool(line[summaryIndex + 6])
+            analyses[-1].skipFirstAcq = str_to_bool(line[summaryIndex + 6])
             if line[summaryIndex + 7] in ['calcite', 'dolomite', 'gas']:
                 analyses[-1].mineral = line[summaryIndex + 7]
             if line[summaryIndex + 8] in ['90', '25', '50', '100']:

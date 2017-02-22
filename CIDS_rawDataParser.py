@@ -205,6 +205,10 @@ while True:
             if includeFirstAcq.lower() == 'y':
                 for i in range(len(analyses)):
                     analyses[i].skipFirstAcq = True
+            else:
+                for i in range(len(analyses)):
+                    analyses[i].skipFirstAcq = False
+
             print('Cleaning up analyses...')
             analyses=CIDS_func.CIDS_cleaner(analyses)
             print('Checking analyses types...')
