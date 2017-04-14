@@ -22,6 +22,7 @@ CIT_Carrara_ARF = 0.3115 + 0.092
 NBS_19_ARF = CIT_Carrara_ARF
 TV03_ARF = 0.635 + 0.092
 GC_AZ_ARF = 0.710
+TV04_ARF = 0.655
 # CIT_Carrara
 
 
@@ -983,6 +984,15 @@ def Get_carbonate_stds(analyses):
                 if 'carrara' in item.name.lower():
                     item.TCO2 = ''
                     item.D47nominal = CIT_Carrara_ARF -acid_correction_dict[item.rxnTemp]
+                elif 'carara' in item.name.lower():
+                    item.TCO2 = ''
+                    item.D47nominal = CIT_Carrara_ARF -acid_correction_dict[item.rxnTemp]
+                elif 'cararra' in item.name.lower():
+                    item.TCO2 = ''
+                    item.D47nominal = CIT_Carrara_ARF -acid_correction_dict[item.rxnTemp]
+                elif 'hagit' in item.name.lower():
+                    item.TCO2 = ''
+                    item.D47nominal = CIT_Carrara_ARF -acid_correction_dict[item.rxnTemp]
                 elif 'tv03' in item.name.lower():
                     item.TCO2 = ''
                     item.D47nominal = TV03_ARF -acid_correction_dict[item.rxnTemp]
@@ -992,12 +1002,15 @@ def Get_carbonate_stds(analyses):
                 elif 'gc-az' in item.name.lower():
                     item.TCO2 = ''
                     item.D47nominal = GC_AZ_ARF -acid_correction_dict[item.rxnTemp]
+                elif 'gc-102' in item.name.lower():
+                    item.TCO2 = ''
+                    item.D47nominal = GC_AZ_ARF -acid_correction_dict[item.rxnTemp]
                 elif 'gc_az' in item.name.lower():
                     item.TCO2 = ''
                     item.D47nominal = GC_AZ_ARF -acid_correction_dict[item.rxnTemp]
                 elif 'tv04' in item.name.lower():
                     item.TCO2 = ''
-                    item.D47nominal = TV03_ARF -acid_correction_dict[item.rxnTemp]
+                    item.D47nominal = TV04_ARF -acid_correction_dict[item.rxnTemp]
                 else:
                     item.TCO2 = ''
                     item.D47nominal = ''
@@ -1282,14 +1295,14 @@ def Sample_type_checker(analyses):
 
 def Get_types_auto(analyses):
     '''Function to assign the correct type to every analysis automatically, given a few assumptions:
-    stds are Carrara, NBS-19, or TV03, all gases have 'BOC' in name, and all egs have '25' in name)'''
+    stds are Carrara, NBS-19, TV04, or TV03, all gases have 'BOC' in name, and all egs have '25' in name)'''
 
     print('Automatically assigning analyses types ')
     choice = raw_input('(s)top process, see (n)aming guidelines, or hit any other key to continue ').lower()
     if choice == 's':
         return(analyses)
     elif choice == 'n':
-        print('1. Standards must contain words "carrara", "TV03", or "NBS-19", "or GC-AZ" ')
+        print('1. Standards must contain words "carrara", "TV04", "TV03", or "NBS-19", "or GC-AZ" ')
         print('2. 25 C equilibrated gases must contain "BOC" AND "25" ')
         print('3. 1000 C heated gases must contain "BOC" AND NOT "25" AND < 15 chars ')
         print('4. Analyses that already have a valid type are not modified ')
@@ -1300,7 +1313,7 @@ def Get_types_auto(analyses):
                 continue
             else:
                 name = analyses[i].name.lower()
-                if ('carrara' in name) or ('tv03' in name) or ('nbs-19' in name) or ('gc-az' in name) or ('gc_az' in name):
+                if ('carrara' in name) or ('tv03' in name) or ('nbs-19' in name) or ('gc-az' in name) or ('gc_az' in name) or ('tv04' in name):
                     analyses[i].type = 'std';
                     continue
                 elif ('boc' in name):
@@ -1495,11 +1508,41 @@ def CI_temp_calibrations(analysis, objName):
 
     # New ARF function, based on Stolper 2015, Bonifacie 2011, Guo 2009, and Ghosh 2006 data
     # projected into ARF using absolute slope
-    a = 0.00108331
-    b = 0.0285392
-    c = 0.258652-analysis.D47_ARF_acid
-    TKe6 = (-b +np.sqrt(b**2-4*a*c))/(2*a)
-    T_C = np.sqrt(1e6/TKe6)-273.15
+    # a = 0.00108331
+    # b = 0.0285392
+    # c = 0.258652-analysis.D47_ARF_acid
+    # TKe6 = (-b +np.sqrt(b**2-4*a*c))/(2*a)
+    # T_C = np.sqrt(1e6/TKe6)-273.15
+    TKe6 = (analysis.D47_ARF-0.1262)/0.0422
+    if TKe6 > 0:
+        T_C = np.sqrt(1e6/TKe6)-273.15
+    else:
+        T_C = np.nan
+
+    return(T_C)
+
+def CI_D47_to_temp_ARF_90(D47_ARF):
+    '''Function to apply a temperature calibration'''
+    #for now, just doing the boniface + Henkes ARF calibration
+    # T = np.sqrt(0.0421e6/(D47_ARF_acid - 0.211)) - 273.15
+
+    # NEW Boniface 2016 calibration
+    # NOTE: Using D47_ARF that is not acid corrected, because this is how Magali does it
+    TKe6 = (D47_ARF-0.1262)/0.0422
+
+    # New ARF function, based on Stolper 2015, Bonifacie 2011, Guo 2009, and Ghosh 2006 data
+    # projected into ARF using absolute slope
+    # a = 0.00108331
+    # b = 0.0285392
+    # c = 0.258652-D47_ARF_acid
+    # a = 0.001083
+    # b = 0.02854
+    # c = 0.25865-D47_ARF_acid
+    # TKe6 = (-b +np.sqrt(b**2-4*a*c))/(2*a)
+    if TKe6 > 0:
+        T_C = np.sqrt(1e6/TKe6)-273.15
+    else:
+        T_C = np.nan
     return(T_C)
 
 def CI_D47_to_temp_ARF(D47_ARF_acid):
@@ -1508,7 +1551,9 @@ def CI_D47_to_temp_ARF(D47_ARF_acid):
     # T = np.sqrt(0.0421e6/(D47_ARF_acid - 0.211)) - 273.15
 
     # NEW Boniface 2016 calibration
-    TKe6 = (D47_ARF_acid-0.1262)/0.0422
+    # NOTE: Using D47_ARF that is not acid corrected, because this is how Magali does it
+    D47_ARF_90 = D47_ARF_acid- 0.092
+    TKe6 = (D47_ARF_90-0.1262)/0.0422
 
     # New ARF function, based on Stolper 2015, Bonifacie 2011, Guo 2009, and Ghosh 2006 data
     # projected into ARF using absolute slope
@@ -1537,7 +1582,8 @@ def CI_temp_to_D47_ARF(T_C):
     # c = 0.258652
     TKe6 = 1e6/(T_C+273.15)**2
     # D47_ARF_acid = a*TKe6**2+b*TKe6+c
-    D47_ARF_acid= 0.0422*TKe6 + 0.1262
+    D47_ARF_90= 0.0422*TKe6 + 0.1262
+    D47_ARF_acid = D47_ARF_90 + 0.092
 
     return(D47_ARF_acid)
 
@@ -1617,6 +1663,15 @@ def Daeron_data_creator(analyses, useCarbStandards = False):
                 if 'carrara' in i.name.lower():
                     daeronData[-1]['D47nominal'] = CIT_Carrara_ARF - acid_correction_dict[i.rxnTemp]
                     daeronData[-1]['TCO2eq'] = np.nan
+                elif 'carara' in i.name.lower():
+                    daeronData[-1]['D47nominal'] = CIT_Carrara_ARF - acid_correction_dict[i.rxnTemp]
+                    daeronData[-1]['TCO2eq'] = np.nan
+                elif 'cararra' in i.name.lower():
+                    daeronData[-1]['D47nominal'] = CIT_Carrara_ARF - acid_correction_dict[i.rxnTemp]
+                    daeronData[-1]['TCO2eq'] = np.nan
+                elif 'hagit' in i.name.lower():
+                    daeronData[-1]['D47nominal'] = CIT_Carrara_ARF - acid_correction_dict[i.rxnTemp]
+                    daeronData[-1]['TCO2eq'] = np.nan
                 elif 'tv03' in i.name.lower():
                     daeronData[-1]['D47nominal'] = TV03_ARF - acid_correction_dict[i.rxnTemp]
                     daeronData[-1]['TCO2eq'] = np.nan
@@ -1629,8 +1684,11 @@ def Daeron_data_creator(analyses, useCarbStandards = False):
                 elif 'gc_az' in i.name.lower():
                     daeronData[-1]['D47nominal'] = GC_AZ_ARF - acid_correction_dict[i.rxnTemp]
                     daeronData[-1]['TCO2eq'] = np.nan
+                elif 'gc-102' in i.name.lower():
+                    daeronData[-1]['D47nominal'] = GC_AZ_ARF - acid_correction_dict[i.rxnTemp]
+                    daeronData[-1]['TCO2eq'] = np.nan
                 elif 'tv04' in i.name.lower():
-                    daeronData[-1]['D47nominal'] = TV03_ARF - acid_correction_dict[i.rxnTemp]
+                    daeronData[-1]['D47nominal'] = TV04_ARF - acid_correction_dict[i.rxnTemp]
                     daeronData[-1]['TCO2eq'] = np.nan
 
     else:
@@ -1669,11 +1727,24 @@ def Daeron_data_processer(analyses, showFigures = False):
 
     # Calculating CIT Carrara offset
     stds_Carrara = [i for i in analyses if (i.type == 'std' and 'carrara' in i.name.lower() and not i.D48_excess)]
+    # and TV04 offset
+    stds_TV04 = [i for i in analyses if (i.type == 'std' and 'tv04' in i.name.lower() and not i.D48_excess)]
+
     global CarraraCorrection
     CarraraCorrection = np.mean([i.D47_ARF_acid for i in stds_Carrara]) - CIT_Carrara_ARF
+    TV04_Correction = np.mean([i.D47_ARF_acid for i in stds_TV04]) - TV04_ARF
     print('Carrara Correction is: '+ str(CarraraCorrection))
-
+    print('TV04 Correction is: '+ str(TV04_Correction))
+    stdCorrChoice = raw_input('Use (c)arrara, (t)V04, or (b)oth for carbonate std correction? ').lower()
+    if stdCorrChoice == 't':
+        CarraraCorrection = TV04_Correction
+    elif stdCorrChoice == 'b':
+        # if both, use average of both corrections, weighted by number of samples
+        bothCorrection = (CarraraCorrection*len(stds_Carrara) + TV04_Correction*len(stds_TV04))/(len(stds_Carrara)+ len(stds_TV04))
+        print('both correction (weighted average) is: '+ str(bothCorrection))
+        CarraraCorrection = bothCorrection
     return
+
 def ExportSequence(analyses, pbl = False):
     '''Most common export sequence'''
     print('Exporting to temporary CIDS and FlatList files ')
@@ -1720,26 +1791,36 @@ def ExportSequence_named(analyses, fileName, pbl = False):
 
     return
 
-def plot_T_scale(axis, in_ARF = False):
+def plot_T_scale(axis, in_ARF = True):
     ''' Plots a secondary y-axis with temperature scale to match the D47 on ARF '''
     # 1. Get D47 labels
-    tlabels = axis.get_yticklabels(which = 'both')
+    # tlabels = axis.get_yticklabels(which = 'both')
     # 2. For some reason, have to save fig first
     fig = plt.gcf()
     fig.savefig('temp.pdf')
+    # copy the old axis
+    axis2 = axis.twinx()
+    axis2.grid(False)
+    # ensure that they align
+    axis2.set_ylim(axis.get_ylim())
+    # Now, extract ticklabels from new axis
+    tlabels = axis.get_yticklabels(which = 'both')
     y2_temps = []
     for i in range(len(tlabels)):
         tl = tlabels[i]
         D47_str = tl.get_text()
         if len(D47_str) > 0:
             if in_ARF:
-                y2_temps.append('{0:.0f}'.format(np.around(CI_D47_to_temp_ARF(float(D47_str)),0)))
+                if str(CI_D47_to_temp_ARF(float(D47_str))) == 'nan':
+                    y2_temps.append('')
+                else:
+                    y2_temps.append('{0:.0f}'.format(np.around(CI_D47_to_temp_ARF(float(D47_str)),0)))
             else:
                 y2_temps.append('{0:.0f}'.format(np.around(CI_D47_to_temp_CRF(float(D47_str)),0)))
         else:
             y2_temps.append('')
-    axis2 = axis.twinx()
-    axis2.grid(False)
+    # axis2 = axis.twinx()
+    # axis2.grid(False)
     axis2.set_ylabel(ur'Temperature ($^{\circ}$C)')
     axis2.set_yticklabels(y2_temps)
     return
